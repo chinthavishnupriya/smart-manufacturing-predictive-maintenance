@@ -7,7 +7,10 @@ from pathlib import Path
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-from prompt_engine import SYSTEM_PROMPT, build_user_prompt
+try:
+    from .prompt_engine import SYSTEM_PROMPT, build_user_prompt
+except ImportError:
+    from prompt_engine import SYSTEM_PROMPT, build_user_prompt
 
 BASE_DIR = Path(__file__).resolve().parent
 KNOWLEDGE_DIR = BASE_DIR / "knowledge_base"
@@ -54,9 +57,10 @@ def retrieve(query, top_k=3):
 
     ranked = scores.argsort()[::-1][:top_k]
     results = []
+    min_similarity = float(os.getenv("RAG_MIN_SIMILARITY", "0.20"))
 
     for index in ranked:
-        if scores[index] <= 0:
+        if scores[index] < min_similarity:
             continue
 
         results.append({
