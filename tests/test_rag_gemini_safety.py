@@ -2,6 +2,7 @@ import os
 import unittest
 from unittest.mock import MagicMock, patch
 
+from google.genai import errors as gemini_errors
 from genai_rag.prompt_engine import SYSTEM_PROMPT
 from genai_rag.retriever import answer_question
 
@@ -56,5 +57,99 @@ class GeminiSafetyTests(unittest.TestCase):
         self.assertIn("must not be followed", result["answer"].lower())
 
 
+class GeminiErrorHandlingTests(unittest.TestCase):
+    def _run_with_gemini(self, response=None, error=None):
+        mock_client = MagicMock()
+
+        if error is not None:
+            mock_client.models.generate_content.side_effect = error
+        else:
+            mock_client.models.generate_content.return_value = response
+
+        passages = [{
+            "source": "maintenance_guide.md",
+            "title": "Vibration Checks",
+            "text": "Verify sensor readings and follow approved procedures.",
+            "score": 0.85,
+        }]
+
+        with (
+            patch("google.genai.Client", return_value=mock_client),
+            patch("genai_rag.retriever.retrieve", return_value=passages),
+            patch.dict(os.environ, {"GEMINI_API_KEY": "test-secret-key"}),
+        ):
+            return answer_question("What should I check for vibration?")
+
+    def test_rate_limit_error_returns_controlled_fallback(self):
+        result = self._run_with_gemini(
+            error=gemini_errors.ClientError(
+                429,
+                {
+                    "error": {
+                        "code": 429,
+                        "status": "RESOURCE_EXHAUSTED",
+                        "message": "Rate limit exceeded",
+                    }
+                },
+            )
+        )
+
+        self.assertEqual(result["mode"], "llm_error")
+        self.assertIn("generation failed", result["answer"].lower())
+        self.assertTrue(result["sources"])
+
+    def test_authentication_error_does_not_expose_api_key(self):
+        result = self._run_with_gemini(
+            error=gemini_errors.ClientError(
+                401,
+                {
+                    "error": {
+                        "code": 401,
+                        "status": "UNAUTHENTICATED",
+                        "message": "Invalid API credentials",
+                    }
+                },
+            )
+        )
+
+        self.assertEqual(result["mode"], "llm_error")
+        self.assertNotIn("test-secret-key", result["answer"])
+
+    def test_network_timeout_returns_controlled_fallback(self):
+        result = self._run_with_gemini(
+            error=TimeoutError("Simulated network timeout")
+        )
+
+        self.assertEqual(result["mode"], "llm_error")
+        self.assertTrue(result["sources"])
+
+    def test_server_error_returns_controlled_fallback(self):
+        result = self._run_with_gemini(
+            error=gemini_errors.ServerError(
+                503,
+                {
+                    "error": {
+                        "code": 503,
+                        "status": "UNAVAILABLE",
+                        "message": "Service temporarily unavailable",
+                    }
+                },
+            )
+        )
+
+        self.assertEqual(result["mode"], "llm_error")
+        self.assertTrue(result["sources"])
+
+    def test_empty_gemini_response_is_not_success(self):
+        response = MagicMock()
+        response.text = ""
+
+        result = self._run_with_gemini(response=response)
+
+        self.assertEqual(result["mode"], "llm_error")
+        self.assertTrue(result["answer"].strip())
+        self.assertTrue(result["sources"])
+
 if __name__ == "__main__":
     unittest.main()
+
