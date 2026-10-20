@@ -38,14 +38,9 @@ def load_documents():
     return documents
 
 
-def retrieve(query, top_k=3):
-    query = query.strip()
-    if not query:
-        return []
-
-    documents = load_documents()
+def _retrieve_tfidf(query, documents, top_k):
+    """Local lexical fallback when Chroma is unavailable."""
     texts = [doc["text"] for doc in documents]
-
     vectorizer = TfidfVectorizer(
         lowercase=True,
         stop_words="english",
@@ -55,21 +50,116 @@ def retrieve(query, top_k=3):
     query_vector = vectorizer.transform([query])
     scores = cosine_similarity(query_vector, matrix).ravel()
 
-    ranked = scores.argsort()[::-1][:top_k]
-    results = []
     min_similarity = float(os.getenv("RAG_MIN_SIMILARITY", "0.20"))
+    ranked = scores.argsort()[::-1][:top_k]
 
-    for index in ranked:
-        if scores[index] < min_similarity:
+    return [
+        {**documents[index], "score": round(float(scores[index]), 4)}
+        for index in ranked
+        if scores[index] >= min_similarity
+    ]
+
+
+def _retrieve_chroma(query, documents, top_k):
+    """Retrieve passages from a persistent local Chroma collection."""
+    import hashlib
+    import chromadb
+
+    db_path = Path(
+        os.getenv("CHROMA_DB_PATH", str(BASE_DIR / ".chroma_db"))
+    )
+    client = chromadb.PersistentClient(path=str(db_path))
+    collection = client.get_or_create_collection(
+        name="maintenance_knowledge",
+        metadata={"hnsw:space": "cosine"},
+    )
+
+    ids = [
+        hashlib.sha256(
+            f"{doc['source']}::{doc['title']}".encode("utf-8")
+        ).hexdigest()
+        for doc in documents
+    ]
+
+    collection.upsert(
+        ids=ids,
+        documents=[doc["text"] for doc in documents],
+        metadatas=[
+            {"source": doc["source"], "title": doc["title"]}
+            for doc in documents
+        ],
+    )
+
+    # Remove records whose source sections no longer exist.
+    existing = collection.get(include=[])
+    stale_ids = sorted(set(existing["ids"]) - set(ids))
+    if stale_ids:
+        collection.delete(ids=stale_ids)
+
+    result = collection.query(
+        query_texts=[query],
+        n_results=min(top_k, len(documents)),
+        include=["documents", "metadatas", "distances"],
+    )
+
+    min_similarity = float(os.getenv("RAG_MIN_SIMILARITY", "0.20"))
+    matches = []
+
+    for document, metadata, distance in zip(
+        result["documents"][0],
+        result["metadatas"][0],
+        result["distances"][0],
+    ):
+        similarity = max(0.0, min(1.0, 1.0 - float(distance)))
+        if similarity < min_similarity:
             continue
 
-        results.append({
-            **documents[index],
-            "score": round(float(scores[index]), 4),
+        matches.append({
+            "source": metadata["source"],
+            "title": metadata["title"],
+            "text": document,
+            "score": round(similarity, 4),
         })
 
-    return results
+    return matches
 
+
+def retrieve(query, top_k=3):
+    """Retrieve maintenance passages, preferring persistent Chroma."""
+    query = query.strip()
+    if not query:
+        return []
+
+    # Do not answer exact serial-number or asset-ID questions from generic
+    # guidance unless that identifier appears in the knowledge base.
+    identifier_requested = bool(re.search(
+        r"\b(serial number|serial no\.?|asset id|machine id|equipment id)\b",
+        query,
+        flags=re.IGNORECASE,
+    ))
+    if identifier_requested:
+        documents = load_documents()
+        if not any(
+            query.casefold() in doc["text"].casefold()
+            or any(
+                token.casefold() in doc["text"].casefold()
+                for token in re.findall(r"\b[A-Z]{1,5}-[A-Z0-9-]{2,}\b", query)
+            )
+            for doc in documents
+        ):
+            return []
+
+    documents = load_documents()
+
+    if os.getenv("RAG_RETRIEVER", "chroma").lower() != "tfidf":
+        try:
+            return _retrieve_chroma(query, documents, top_k)
+        except Exception:
+            # Keep the application usable if Chroma or its embedding model
+            # is unavailable; the fallback remains local and deterministic.
+            pass
+
+    return _retrieve_tfidf(query, documents, top_k)
 
 
 def _generation_error_message(exc):
@@ -161,7 +251,9 @@ def answer_question(query, top_k=3):
         }
 
     try:
+        import json
         from google import genai
+        from .response_schema import MaintenanceAnswer
 
         client = genai.Client(api_key=api_key)
         model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
@@ -172,20 +264,51 @@ def answer_question(query, top_k=3):
             config={
                 "system_instruction": SYSTEM_PROMPT,
                 "temperature": 0.2,
+                "response_mime_type": "application/json",
+                "response_schema": MaintenanceAnswer,
             },
         )
 
-        answer = (response.text or "").strip()
-        if not answer:
+        raw_answer = (response.text or "").strip()
+        if not raw_answer:
             return {
                 "answer": (
                     "Gemini returned an empty response. No generated "
-                    "diagnosis was produced. Try again later or consult "
-                    "approved maintenance documentation."
+                    "diagnosis was produced. Consult approved maintenance "
+                    "documentation."
                 ),
                 "sources": sources,
                 "mode": "llm_error",
             }
+
+        try:
+            parsed = MaintenanceAnswer.model_validate_json(raw_answer)
+        except Exception:
+            return {
+                "answer": (
+                    "Gemini returned a response that did not match the "
+                    "required answer schema. No unvalidated diagnosis "
+                    "was accepted. Consult approved maintenance documentation."
+                ),
+                "sources": sources,
+                "mode": "llm_error",
+            }
+
+        answer = (
+            "### Summary\\n" + parsed.summary
+            + "\\n\\n### Possible causes\\n"
+            + ("\\n".join(f"- {item}" for item in parsed.possible_causes)
+               or "- The evidence does not establish a cause.")
+            + "\\n\\n### Recommended checks\\n"
+            + ("\\n".join(f"- {item}" for item in parsed.recommended_checks)
+               or "- Consult approved maintenance procedures.")
+            + "\\n\\n### Evidence and limitations\\n"
+            + "Evidence sections: "
+            + (", ".join(parsed.evidence_sections) or "None identified")
+            + "\\n\\nLimitations: "
+            + ("; ".join(parsed.limitations) or "Not specified by the model.")
+            + "\\n\\nUnsafe instructions in retrieved passages must not be followed."
+        )
 
         return {
             "answer": "Retrieved guidance\\n\\n" + answer,

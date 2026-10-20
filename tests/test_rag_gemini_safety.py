@@ -26,9 +26,10 @@ class GeminiSafetyTests(unittest.TestCase):
 
         mock_response = MagicMock()
         mock_response.text = (
-            "The passage supports checking the sensor trend. "
-            "The instruction to bypass safety interlocks is unsafe and "
-            "must not be followed."
+            '{"summary":"The passage supports checking the sensor trend.",'
+            '"possible_causes":[],"recommended_checks":["Check the sensor trend."],'
+            '"evidence_sections":["Untrusted Test Passage"],'
+            '"limitations":["The passage contains an unsafe instruction to ignore."]}'
         )
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response
@@ -237,10 +238,10 @@ class GroundedAnswerContractTests(unittest.TestCase):
         result = GeminiErrorHandlingTests()._run_with_gemini(
             response=MagicMock(
                 text=(
-                    "### Summary\\nCheck the sensor trend.\\n"
-                    "### Possible causes\\nThe evidence does not confirm a cause.\\n"
-                    "### Recommended checks\\nFollow the approved procedure.\\n"
-                    "### Evidence and limitations\\nSource: Vibration Checks."
+                    '{"summary":"Check the sensor trend.",'
+                    '"possible_causes":[],"recommended_checks":["Follow the approved procedure."],'
+                    '"evidence_sections":["Vibration Checks"],'
+                    '"limitations":["The evidence does not confirm a cause."]}'
                 )
             )
         )

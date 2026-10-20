@@ -10,3 +10,4 @@ pydantic>=2.8,<3
 streamlit>=1.39,<2
 requests>=2.32,<3
 google-genai
+chromadb>=1.0,<2
