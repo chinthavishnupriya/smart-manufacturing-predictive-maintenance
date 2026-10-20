@@ -29,3 +29,8 @@ models/*.pkl
 data/raw/*.csv
 data/processed/*.csv
 powerbi/*.pbix
+
+# Temporary code backups
+*.bak
+*.backup
+*.before_*
