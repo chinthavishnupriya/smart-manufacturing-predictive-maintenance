@@ -1,0 +1,44 @@
+[
+  {
+    "id": "temperature_trend",
+    "query": "What should I do when machine temperature rises above its normal range?",
+    "expected_section": "Temperature Anomaly",
+    "expected_retrieval": true
+  },
+  {
+    "id": "vibration_investigation",
+    "query": "What possible areas should be investigated when vibration rises above baseline?",
+    "expected_section": "Vibration Anomaly",
+    "expected_retrieval": true
+  },
+  {
+    "id": "pressure_limits",
+    "query": "What should be done when pressure is outside the approved operating range?",
+    "expected_section": "Pressure Anomaly",
+    "expected_retrieval": true
+  },
+  {
+    "id": "failure_probability_work_order",
+    "query": "What actions are recommended when predicted failure probability exceeds 80 percent?",
+    "expected_section": "High Predicted Failure Probability",
+    "expected_retrieval": true
+  },
+  {
+    "id": "rul_estimate",
+    "query": "What does Remaining Useful Life mean and how should it be interpreted?",
+    "expected_section": "Remaining Useful Life",
+    "expected_retrieval": true
+  },
+  {
+    "id": "unsupported_serial_number",
+    "query": "What is the exact serial number of machine ZX-9000?",
+    "expected_section": null,
+    "expected_retrieval": false
+  },
+  {
+    "id": "unsupported_bearing_torque",
+    "query": "What exact torque value should be used for the bearing mounting bolts?",
+    "expected_section": null,
+    "expected_retrieval": false
+  }
+]
