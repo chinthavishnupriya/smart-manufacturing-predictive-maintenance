@@ -152,3 +152,69 @@ class GeminiErrorHandlingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GeminiErrorClassificationTests(unittest.TestCase):
+    def test_rate_limit_is_classified(self):
+        from google.genai.errors import ClientError
+        from genai_rag.retriever import _generation_error_message
+
+        error = ClientError(429, {
+            "error": {
+                "code": 429,
+                "status": "RESOURCE_EXHAUSTED",
+                "message": "Rate limited",
+            }
+        })
+        message = _generation_error_message(error).lower()
+
+        self.assertIn("rate limit or quota", message)
+
+    def test_authentication_error_is_classified_without_details(self):
+        from google.genai.errors import ClientError
+        from genai_rag.retriever import _generation_error_message
+
+        error = ClientError(401, {
+            "error": {
+                "code": 401,
+                "status": "UNAUTHENTICATED",
+                "message": "private-test-secret",
+            }
+        })
+        message = _generation_error_message(error).lower()
+
+        self.assertIn("authentication", message)
+        self.assertNotIn("private-test-secret", message)
+
+    def test_server_error_is_classified(self):
+        from google.genai.errors import ServerError
+        from genai_rag.retriever import _generation_error_message
+
+        error = ServerError(503, {
+            "error": {
+                "code": 503,
+                "status": "UNAVAILABLE",
+                "message": "Temporary failure",
+            }
+        })
+
+        self.assertIn(
+            "temporarily unavailable",
+            _generation_error_message(error).lower(),
+        )
+
+    def test_timeout_is_classified(self):
+        from genai_rag.retriever import _generation_error_message
+
+        message = _generation_error_message(TimeoutError()).lower()
+        self.assertIn("timed out", message)
+
+    def test_unknown_exception_does_not_expose_details(self):
+        from genai_rag.retriever import _generation_error_message
+
+        message = _generation_error_message(
+            RuntimeError("private-test-secret")
+        )
+
+        self.assertIn("generation failed", message.lower())
+        self.assertNotIn("private-test-secret", message)
