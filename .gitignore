@@ -34,3 +34,13 @@ powerbi/*.pbix
 *.bak
 *.backup
 *.before_*
+
+# Generated output files
+outputs/
+data/raw/*.csv
+data/processed/*.csv
+powerbi/*.pbix
+
+# Temporary streaming backups
+spark_streaming/*backup*
+spark_streaming/*before_*
