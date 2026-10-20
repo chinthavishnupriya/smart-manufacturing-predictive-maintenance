@@ -218,3 +218,34 @@ class GeminiErrorClassificationTests(unittest.TestCase):
 
         self.assertIn("generation failed", message.lower())
         self.assertNotIn("private-test-secret", message)
+
+
+class GroundedAnswerContractTests(unittest.TestCase):
+    def test_system_prompt_distinguishes_possible_causes_from_facts(self):
+        self.assertIn("Distinguish facts explicitly supported", SYSTEM_PROMPT)
+        self.assertIn("List only causes supported", SYSTEM_PROMPT)
+
+    def test_system_prompt_forbids_claiming_live_machine_inspection(self):
+        self.assertIn("unless", SYSTEM_PROMPT)
+        self.assertIn("live sensor readings", SYSTEM_PROMPT)
+
+    def test_system_prompt_requires_source_sections_and_limitations(self):
+        self.assertIn("Evidence and limitations", SYSTEM_PROMPT)
+        self.assertIn("Name the supplied source sections", SYSTEM_PROMPT)
+
+    def test_successful_answer_preserves_retrieved_source_metadata(self):
+        result = GeminiErrorHandlingTests()._run_with_gemini(
+            response=MagicMock(
+                text=(
+                    "### Summary\\nCheck the sensor trend.\\n"
+                    "### Possible causes\\nThe evidence does not confirm a cause.\\n"
+                    "### Recommended checks\\nFollow the approved procedure.\\n"
+                    "### Evidence and limitations\\nSource: Vibration Checks."
+                )
+            )
+        )
+
+        self.assertEqual(result["mode"], "gemini_rag")
+        self.assertEqual(len(result["sources"]), 1)
+        self.assertEqual(result["sources"][0]["section"], "Vibration Checks")
+        self.assertIn("Evidence and limitations", result["answer"])

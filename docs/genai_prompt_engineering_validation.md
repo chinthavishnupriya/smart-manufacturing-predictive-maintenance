@@ -34,3 +34,17 @@ Run the suite with:
 - [ ] Changes pass git diff --check.
 - [ ] Documentation and tests are committed and pushed.
 - [ ] Live Gemini validation is recorded separately from mocked tests.
+
+## Latest validation — 2026-10-21
+
+- [x] Full automated regression suite: 34 tests passed.
+- [x] `git diff --check` passed.
+- [x] RAG retrieval evaluation: Hit@1 5/5, Hit@3 5/5,
+      unsupported-query abstention 2/2.
+- [ ] Commit and push the latest grounding-contract tests.
+- [ ] Record any additional live Gemini validation separately.
+
+The retrieval metrics cover five supported and two unsupported queries
+against the demonstration maintenance guide. They are not production
+accuracy guarantees. Prompt-contract tests do not prove that all generated
+answers are grounded or immune to prompt injection.
