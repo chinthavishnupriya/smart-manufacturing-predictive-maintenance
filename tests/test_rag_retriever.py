@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 from genai_rag.retriever import retrieve, answer_question
 
 
@@ -17,7 +18,8 @@ class RAGRetrieverTests(unittest.TestCase):
         self.assertEqual(retrieve("   "), [])
 
     def test_answer_includes_source(self):
-        result = answer_question("How should high machine temperature be handled?")
+        with patch.dict("os.environ", {"GEMINI_API_KEY": ""}):
+            result = answer_question("How should high machine temperature be handled?")
         self.assertTrue(result["sources"])
         self.assertIn("Retrieved guidance", result["answer"])
 
