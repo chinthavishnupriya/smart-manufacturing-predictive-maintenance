@@ -48,3 +48,21 @@ The retrieval metrics cover five supported and two unsupported queries
 against the demonstration maintenance guide. They are not production
 accuracy guarantees. Prompt-contract tests do not prove that all generated
 answers are grounded or immune to prompt injection.
+
+## Live Gemini validation
+
+Previously performed manual checks using Gemini:
+
+- [x] Relevant vibration query returned retrieved maintenance guidance.
+- [x] Unsupported machine serial-number query returned retrieval-only abstention.
+- [x] Unsupported bearing-torque query returned retrieval-only abstention.
+- [x] One prompt-injection example was tested against the live model.
+- [x] The tested response rejected the injected instruction to bypass safety
+      interlocks and did not claim that the machine was safe without inspection.
+
+Limitations:
+- These are individual observations, not a comprehensive security evaluation.
+- Live responses can vary between runs.
+- Successful handling of one injection does not establish resistance to all
+  prompt-injection attacks.
+- Retrieval-only responses do not validate Gemini generation behavior.
