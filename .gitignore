@@ -44,3 +44,6 @@ powerbi/*.pbix
 # Temporary streaming backups
 spark_streaming/*backup*
 spark_streaming/*before_*
+
+# NASA C-MAPSS dataset files (keep locally, exclude from Git)
+data/raw/nasa_cmapss/
