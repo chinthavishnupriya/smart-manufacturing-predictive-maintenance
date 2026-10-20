@@ -4,3 +4,28 @@ __pycache__/
 .ipynb_checkpoints/
 .env
 *.log
+
+# Additional Python environments
+.venv-*/
+.venv-airflow*/
+.venv-model-validation/
+.venv-spark/
+
+# Airflow runtime
+.airflow/
+.airflow-project/
+
+# Streaming and runtime state
+checkpoints/
+**/checkpoints/
+TIMING
+
+# Generated outputs and large artifacts
+outputs/*.csv
+outputs/*.png
+outputs/*.json
+models/*.joblib
+models/*.pkl
+data/raw/*.csv
+data/processed/*.csv
+powerbi/*.pbix
