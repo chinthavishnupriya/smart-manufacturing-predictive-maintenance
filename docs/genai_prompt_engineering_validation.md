@@ -31,8 +31,8 @@ Run the suite with:
 ## Release checklist
 - [x] Automated regression suite passes.
 - [x] Error-classification tests pass.
-- [ ] Changes pass git diff --check.
-- [ ] Documentation and tests are committed and pushed.
+- [x] Changes pass git diff --check.
+- [x] Documentation and tests are committed and pushed.
 - [ ] Live Gemini validation is recorded separately from mocked tests.
 
 ## Latest validation — 2026-10-21
@@ -41,7 +41,7 @@ Run the suite with:
 - [x] `git diff --check` passed.
 - [x] RAG retrieval evaluation: Hit@1 5/5, Hit@3 5/5,
       unsupported-query abstention 2/2.
-- [ ] Commit and push the latest grounding-contract tests.
+- [x] Commit and push the latest grounding-contract tests.
 - [ ] Record any additional live Gemini validation separately.
 
 The retrieval metrics cover five supported and two unsupported queries
