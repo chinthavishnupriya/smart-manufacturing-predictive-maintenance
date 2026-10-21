@@ -420,15 +420,18 @@ def write_to_hbase(batch_df, batch_id):
     print()
     print("----------------------------------------------")
     print(f"HBase Batch ID: {batch_id}")
+    print(f"RESILIENCE_BATCH_ID={batch_id}", flush=True)
     print("----------------------------------------------")
 
     hbase_connection = None
+    batch_succeeded = False
 
     try:
         # Collect this microbatch once, avoiding a separate emptiness action.
         rows = list(batch_df.toLocalIterator())
         if not rows:
             print("No records in this batch.")
+            batch_succeeded = True
             return
 
         # Prepare all model inputs using the trained feature names.
@@ -556,6 +559,7 @@ def write_to_hbase(batch_df, batch_id):
             f"Records written: {record_count}"
         )
         print(f"RUL predictions generated: {len(predicted_values)}")
+        batch_succeeded = True
 
         # Test-only crash window: allow the acceptance runner to kill this
         # process after HBase writes but before Spark commits the microbatch.
@@ -584,6 +588,8 @@ def write_to_hbase(batch_df, batch_id):
             f"TIMING total HBase function: "
             f"{time.perf_counter() - batch_start_time:.3f}s"
         )
+        result_label = "PASS" if batch_succeeded else "FAIL"
+        print(f"RESILIENCE_BATCH_RESULT={batch_id}:{result_label}", flush=True)
 
 
 # ============================================================
