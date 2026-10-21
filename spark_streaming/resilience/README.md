@@ -1,6 +1,6 @@
-# Spark checkpoint and duplicate-event acceptance
+# Spark checkpoint replay and idempotent HBase acceptance
 
-This is an isolated test harness for the two streaming failure modes in the capstone acceptance rubric: restarting a Spark job from its checkpoint and replaying an identical sensor event.
+This is an isolated test harness for checkpoint recovery: Spark is killed after HBase receives a microbatch but before Spark marks that microbatch complete, then restarted against the same checkpoint so the same Kafka offsets are replayed.
 
 ## Preconditions
 
@@ -15,7 +15,7 @@ This is an isolated test harness for the two streaming failure modes in the caps
 
 Optional overrides: `KAFKA_SERVER`, `KAFKA_BOOTSTRAP`, `HBASE_HOST`, `HBASE_PORT`. The dedicated test topic/table names can be changed with `KAFKA_TOPIC`/`HBASE_TABLE`, but must remain different from the live demo names.
 
-The runner assigns a unique machine ID and an isolated checkpoint, publishes an event and pauses the test stream after the HBase put but before the foreachBatch callback returns. It publishes an exact duplicate, kills the process, restarts against the same checkpoint, and checks that each HBase window row has event_count=1 and that row count does not increase across restart.
+The runner assigns a unique machine ID and an isolated checkpoint, publishes one event and pauses the test stream after the HBase put but before the foreachBatch callback returns. It kills the Python/JVM process group, restarts against the same checkpoint, verifies the interrupted batch ID is replayed, and checks that each HBase window row still has event_count=1 and that row count does not increase across restart. It does not publish a second logical duplicate record.
 
 The test-stream changes are intentionally isolated from spark_streaming/sensor_stream.py and its production checkpoint. Logs are written to outputs/ and checkpoints are retained under checkpoints/ for inspection.
 
