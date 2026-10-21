@@ -7,6 +7,7 @@ PYTHON_BIN="${PYTHON_BIN:-$ROOT/.venv-spark/bin/python}"
 STREAM="$ROOT/spark_streaming/sensor_stream_part3_test.py"
 PUBLISHER="$ROOT/spark_streaming/resilience/publish_event.py"
 VERIFIER="$ROOT/spark_streaming/resilience/verify_hbase_event.py"
+PREPARE="$ROOT/spark_streaming/resilience/prepare_test_environment.py"
 
 [[ -x "$PYTHON_BIN" ]] || { echo "ERROR: Python environment not found: $PYTHON_BIN. Set PYTHON_BIN to the Spark/Kafka/HBase environment." >&2; exit 1; }
 [[ -f "$ROOT/models/rul_model.joblib" ]] || { echo "ERROR: models/rul_model.joblib is missing; required by the streaming test job." >&2; exit 1; }
@@ -22,6 +23,16 @@ FIRST_REPORT="$(mktemp)"
 SECOND_REPORT="$(mktemp)"
 SPARK_PID=""
 mkdir -p "$ROOT/outputs" "$ROOT/checkpoints"
+
+# Use dedicated test resources; never publish this drill into the live demo topic/table.
+export KAFKA_SERVER="${KAFKA_SERVER:-localhost:9092}"
+export KAFKA_BOOTSTRAP="${KAFKA_BOOTSTRAP:-$KAFKA_SERVER}"
+export KAFKA_TOPIC="${KAFKA_TOPIC:-sensor_raw_resilience_test}"
+export HBASE_HOST="${HBASE_HOST:-localhost}"
+export HBASE_PORT="${HBASE_PORT:-9090}"
+export HBASE_TABLE="${HBASE_TABLE:-sensor_anomalies_resilience_test}"
+[[ "$KAFKA_TOPIC" != "sensor_raw" ]] || { echo "ERROR: Refusing to use production topic sensor_raw." >&2; exit 1; }
+[[ "$HBASE_TABLE" != "sensor_anomalies" ]] || { echo "ERROR: Refusing to use production table sensor_anomalies." >&2; exit 1; }
 
 cleanup() {
   if [[ -n "$SPARK_PID" ]] && kill -0 "$SPARK_PID" 2>/dev/null; then
@@ -90,6 +101,10 @@ export PYTHONUNBUFFERED=1
 export SPARK_CHECKPOINT_LOCATION="$CHECKPOINT_URI"
 export RESILIENCE_PAUSE_AFTER_HBASE_SECONDS=120
 
+echo "Preparing isolated Kafka topic $KAFKA_TOPIC and HBase table $HBASE_TABLE..."
+"$PYTHON_BIN" "$PREPARE" --bootstrap "$KAFKA_BOOTSTRAP" --topic "$KAFKA_TOPIC" \
+  --hbase-host "$HBASE_HOST" --hbase-port "$HBASE_PORT" --hbase-table "$HBASE_TABLE"
+
 echo "Starting test stream with isolated checkpoint: $CHECKPOINT_URI"
 "$PYTHON_BIN" "$STREAM" > "$LOG_FILE" 2>&1 &
 SPARK_PID=$!
@@ -130,7 +145,6 @@ SPARK_PID=$!
 wait_for_log "RESILIENCE_BATCH_RESULT=$NEXT_BATCH_ID:PASS" 180
 # Give Spark time to commit the completed batch's offsets to the checkpoint.
 sleep 5
-sleep 8
 verify_with_retry "$SECOND_REPORT" 30
 cat "$SECOND_REPORT"
 
