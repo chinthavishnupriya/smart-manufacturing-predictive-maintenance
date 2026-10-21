@@ -66,7 +66,7 @@ Only expect counts to match where row grain/filter definitions are the same. Sil
 
 | Check | Status | Evidence still required |
 |---|---|---|
-| Hadoop mapper/reducer local contract tests | Added; local run pending | Unit test output from the repo checkout |
+| Hadoop mapper/reducer local contract tests | PASS in clean validation mirror (3 tests) | Re-run in the project checkout after fetching this branch |
 | Hadoop HDFS/YARN MapReduce job | Not run | Successful real cluster job and output |
 | MySQL/Sqoop imports | Not run | Three import logs plus source/HDFS count reconciliation |
 | Three-broker Kafka failure/zero-loss drill | Added; not run | Docker runtime output from the isolated three-broker stack |
