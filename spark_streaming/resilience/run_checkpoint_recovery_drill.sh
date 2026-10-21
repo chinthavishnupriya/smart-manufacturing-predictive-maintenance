@@ -100,6 +100,14 @@ sleep 10
 echo "Publishing first occurrence..."
 "$PYTHON_BIN" "$PUBLISHER" --event-file "$EVENT_FILE" --copies 1
 wait_for_log "RESILIENCE_TEST_PAUSE_AFTER_HBASE_WRITE" 150
+FIRST_BATCH_ID="$(awk '/RESILIENCE_BATCH_ID=/ { id=$0; sub(/^.*=/, "", id) } /RESILIENCE_TEST_PAUSE_AFTER_HBASE_WRITE/ { print id; exit }' "$LOG_FILE")"
+[[ "$FIRST_BATCH_ID" =~ ^[0-9]+$ ]] || {
+  echo "ERROR: Could not determine the paused Spark batch ID." >&2
+  tail -100 "$LOG_FILE" >&2 || true
+  exit 1
+}
+NEXT_BATCH_ID=$((FIRST_BATCH_ID + 1))
+echo "Paused Spark batch: $FIRST_BATCH_ID; duplicate should be handled by batch $NEXT_BATCH_ID."
 echo "HBase write completed while Spark's foreachBatch callback is paused."
 verify_with_retry "$FIRST_REPORT" 30
 cat "$FIRST_REPORT"
@@ -119,20 +127,9 @@ echo "Restarting test stream against the same checkpoint..."
 "$PYTHON_BIN" "$STREAM" >> "$LOG_FILE" 2>&1 &
 SPARK_PID=$!
 
-for _ in $(seq 1 180); do
-  [[ "$(grep -Fc "HBase batch write completed successfully." "$LOG_FILE" 2>/dev/null || true)" -ge 2 ]] && break
-  if ! kill -0 "$SPARK_PID" 2>/dev/null; then
-    echo "ERROR: Restarted stream exited unexpectedly." >&2
-    tail -120 "$LOG_FILE" >&2 || true
-    exit 1
-  fi
-  sleep 1
-done
-[[ "$(grep -Fc "HBase batch write completed successfully." "$LOG_FILE" 2>/dev/null || true)" -ge 2 ]] || {
-  echo "ERROR: No replayed HBase batch observed after restart." >&2
-  tail -120 "$LOG_FILE" >&2 || true
-  exit 1
-}
+wait_for_log "RESILIENCE_BATCH_RESULT=$NEXT_BATCH_ID:PASS" 180
+# Give Spark time to commit the completed batch's offsets to the checkpoint.
+sleep 5
 sleep 8
 verify_with_retry "$SECOND_REPORT" 30
 cat "$SECOND_REPORT"
