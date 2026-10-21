@@ -33,7 +33,7 @@ for table in machine_master maintenance_history work_orders; do
     --target-dir "$target" \
     --num-mappers 1 \
     --as-textfile \
-    --fields-terminated-by '\\t'
+    --fields-terminated-by '\t'
   hdfs dfs -test -e "$target/part-m-00000" || {
     echo "ERROR: Sqoop output file missing for table $table at $target" >&2
     exit 1
