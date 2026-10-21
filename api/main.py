@@ -1,6 +1,7 @@
 """FastAPI service for predictive-maintenance inference and HBase monitoring."""
 
 from pathlib import Path
+import os
 
 import happybase
 import joblib
@@ -18,11 +19,12 @@ from data_processing.feature_engineering import build_features
 
 ROOT = Path(__file__).resolve().parents[1]
 
-MODEL_FILE = (
-    ROOT
-    / "models"
-    / "predictive_maintenance_model.joblib"
+DEFAULT_MODEL_FILE = ROOT / "models" / "predictive_maintenance_model.joblib"
+MODEL_FILE = Path(
+    os.environ.get("PREDICT_MODEL_PATH", str(DEFAULT_MODEL_FILE))
 )
+if not MODEL_FILE.is_absolute():
+    MODEL_FILE = ROOT / MODEL_FILE
 
 HBASE_HOST = "localhost"
 HBASE_PORT = 9090
