@@ -198,14 +198,6 @@ sensor_df = (
     .filter(
         col("event_time").isNotNull()
     )
-    # Deduplicate identical sensor events within the watermark horizon.
-    # The complete measurement fingerprint preserves same-timestamp readings
-    # if any sensor value differs; state is bounded by the 10-minute watermark.
-    .withWatermark("event_time", "10 minutes")
-    .dropDuplicatesWithinWatermark([
-        "machine_id", "event_time", "temperature", "vibration", "rpm",
-        "pressure", "operating_hours", "failure",
-    ])
 )
 
 
@@ -283,6 +275,11 @@ sensor_with_anomalies = (
 
 aggregated_df = (
     sensor_with_anomalies
+
+    .withWatermark(
+        "event_time",
+        "10 minutes"
+    )
 
     .groupBy(
         window(
