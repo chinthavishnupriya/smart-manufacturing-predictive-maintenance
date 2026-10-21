@@ -48,3 +48,6 @@ spark_streaming/*before_*
 # NASA C-MAPSS dataset files (keep locally, exclude from Git)
 data/raw/nasa_cmapss/
 genai_rag/.chroma_db/
+
+# Generated CMMS runtime database
+cmms/work_orders.db
