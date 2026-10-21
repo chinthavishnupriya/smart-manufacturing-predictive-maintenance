@@ -1,3 +1,4 @@
+import os
 import time
 # ============================================================
 # Smart Manufacturing IoT
@@ -61,10 +62,9 @@ HBASE_TABLE = "sensor_anomalies"
 
 # IMPORTANT:
 # This is a NEW checkpoint for the RUL-enabled aggregation.
-CHECKPOINT_LOCATION = (
-    "file:///home/vishnupriya/"
-    "smart-manufacturing-checkpoints/"
-    "sensor_stream_hbase_rul_latency_v4_test"
+CHECKPOINT_LOCATION = os.getenv(
+    "SPARK_CHECKPOINT_LOCATION",
+    "file:///home/vishnupriya/smart-manufacturing-checkpoints/sensor_stream_hbase_resilience_acceptance_v1",
 )
 
 KAFKA_PACKAGE = (
@@ -198,6 +198,14 @@ sensor_df = (
     .filter(
         col("event_time").isNotNull()
     )
+    # Deduplicate identical sensor events within the watermark horizon.
+    # The complete measurement fingerprint preserves same-timestamp readings
+    # if any sensor value differs; state is bounded by the 10-minute watermark.
+    .withWatermark("event_time", "10 minutes")
+    .dropDuplicatesWithinWatermark([
+        "machine_id", "event_time", "temperature", "vibration", "rpm",
+        "pressure", "operating_hours", "failure",
+    ])
 )
 
 
@@ -275,11 +283,6 @@ sensor_with_anomalies = (
 
 aggregated_df = (
     sensor_with_anomalies
-
-    .withWatermark(
-        "event_time",
-        "10 minutes"
-    )
 
     .groupBy(
         window(
@@ -553,6 +556,16 @@ def write_to_hbase(batch_df, batch_id):
             f"Records written: {record_count}"
         )
         print(f"RUL predictions generated: {len(predicted_values)}")
+
+        # Test-only crash window: allow the acceptance runner to kill this
+        # process after HBase writes but before Spark commits the microbatch.
+        pause_seconds = float(os.getenv("RESILIENCE_PAUSE_AFTER_HBASE_SECONDS", "0"))
+        if pause_seconds > 0:
+            print(
+                "RESILIENCE_TEST_PAUSE_AFTER_HBASE_WRITE "
+                f"seconds={pause_seconds}", flush=True
+            )
+            time.sleep(pause_seconds)
 
     except Exception as error:
         print("ERROR writing to HBase:")
