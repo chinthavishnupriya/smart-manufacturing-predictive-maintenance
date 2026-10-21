@@ -42,6 +42,18 @@ The script stops broker 1, produces through the remaining brokers, restarts brok
 
     docker compose -p smart-manufacturing-resilience -f kafka/resilience/docker-compose.yml down
 
+## Recorded Kafka broker-failure run
+
+- Run timestamp from the generated run ID: `2026-10-21T22:29:27Z`.
+- Topic: `resilience-drill-20261021T222927Z-235155`.
+- Topic settings: 3 partitions, replication factor 3, `min.insync.replicas=2`.
+- ISR before outage: `1,2,3` for all three partitions.
+- Broker 1 was stopped successfully; another broker accepted 20 messages with `acks=all`.
+- After broker 1 restarted, the consumer read 40 total records.
+- Expected-vs-observed message ID comparison passed with no missing or duplicate IDs.
+
+Result: **PASS for this one-broker outage drill**. This does not establish resilience to simultaneous failures, network partitions, or every possible broker/controller failure.
+
 ## 4. Spark checkpoint/replay and idempotent HBase write
 
 This isolated integration drill uses spark_streaming/sensor_stream_part3_test.py and a new checkpoint path per run. The test script supports a test-only pause after the HBase write but before the Spark microbatch completes. The drill uses the existing single windowed aggregation state operator so the configured Update output mode remains supported. The production stream and its existing checkpoint are not modified by this drill.
@@ -69,6 +81,6 @@ Only expect counts to match where row grain/filter definitions are the same. Sil
 | Hadoop mapper/reducer local contract tests | PASS in clean validation mirror (3 tests) | Re-run in the project checkout after fetching this branch |
 | Hadoop HDFS/YARN MapReduce job | Not run | Successful real cluster job and output |
 | MySQL/Sqoop imports | Not run | Three import logs plus source/HDFS count reconciliation |
-| Three-broker Kafka failure/zero-loss drill | Added; not run | Docker runtime output from the isolated three-broker stack |
+| Three-broker Kafka failure/zero-loss drill | PASS — 40/40 expected message IDs recovered exactly once | Run `2026-10-21T22:29:27Z`, topic `resilience-drill-20261021T222927Z-235155`; one broker stopped; 20 messages acknowledged during outage; RF=3, min ISR=2 |
 | Spark checkpoint crash/replay | Added; not run | Local Kafka/Spark/HBase run output and log |
 | Databricks Bronze/Silver/Gold reconciliation | Not verified | Actual workspace run ID/table names/count comparisons |
