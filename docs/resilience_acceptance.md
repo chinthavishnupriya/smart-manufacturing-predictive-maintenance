@@ -44,13 +44,13 @@ The script stops broker 1, produces through the remaining brokers, restarts brok
 
 ## 4. Spark checkpoint/replay and idempotent HBase write
 
-This isolated integration drill uses spark_streaming/sensor_stream_part3_test.py and a new checkpoint path per run. The test script supports a test-only pause after the HBase write and uses bounded duplicate detection by machine, event time and the complete measurement fingerprint within the 10-minute watermark horizon. The production stream and its existing checkpoint are not modified by this drill.
+This isolated integration drill uses spark_streaming/sensor_stream_part3_test.py and a new checkpoint path per run. The test script supports a test-only pause after the HBase write but before the Spark microbatch completes. The drill uses the existing single windowed aggregation state operator so the configured Update output mode remains supported. The production stream and its existing checkpoint are not modified by this drill.
 
 Prerequisites: working Kafka at localhost:9092 and HBase Thrift at localhost:9090, models/rul_model.joblib, and a Python environment containing PySpark, kafka-python and happybase. The runner creates/reuses isolated resources named sensor_raw_resilience_test and sensor_anomalies_resilience_test by default; do not override these to the production topic/table.
 
     PYTHON_BIN="$PWD/.venv-spark/bin/python" bash spark_streaming/resilience/run_checkpoint_recovery_drill.sh
 
-The runner publishes an event, pauses after HBase has been written but before foreachBatch returns, publishes the identical event again, kills Spark, restarts using the same checkpoint and checks that event_count remains 1 and HBase row count remains stable. Save output and the generated log. A pass covers this tested local path and crash timing; it is not proof of every possible failure timing or production-scale exactly-once semantics.
+The runner publishes one event, pauses after HBase has been written but before foreachBatch returns, kills the Spark process group, and restarts using the same checkpoint. It verifies the interrupted batch ID is replayed and that event_count remains 1 and HBase row count remains stable. This tests replay of the same uncommitted Kafka offsets; it does not test a new intentional duplicate Kafka record. Save output and the generated log. A pass covers this tested local path and crash timing; it is not proof of every possible failure timing or production-scale exactly-once semantics.
 
 ## 5. Databricks Bronze/Silver/Gold reconciliation
 
