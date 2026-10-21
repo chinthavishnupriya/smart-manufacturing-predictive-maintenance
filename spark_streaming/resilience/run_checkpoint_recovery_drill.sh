@@ -124,16 +124,10 @@ FIRST_BATCH_ID="$(awk '/RESILIENCE_BATCH_ID=/ { id=$0; sub(/^.*=/, "", id) } /RE
   tail -100 "$LOG_FILE" >&2 || true
   exit 1
 }
-NEXT_BATCH_ID=$((FIRST_BATCH_ID + 1))
-echo "Paused Spark batch: $FIRST_BATCH_ID; duplicate should be handled by batch $NEXT_BATCH_ID."
+echo "Paused Spark batch: $FIRST_BATCH_ID. The drill will test replay of that same uncommitted Kafka-offset batch."
 echo "HBase write completed while Spark's foreachBatch callback is paused."
 verify_with_retry "$FIRST_REPORT" 30
 cat "$FIRST_REPORT"
-
-# Send an exact duplicate after the first microbatch's source offsets were selected.
-echo "Publishing exact duplicate during the pause..."
-"$PYTHON_BIN" "$PUBLISHER" --event-file "$EVENT_FILE" --copies 1
-sleep 2
 
 echo "Killing the Spark test process before the microbatch callback returns..."
 kill -KILL -- "-$SPARK_PID"
@@ -145,8 +139,15 @@ echo "Restarting test stream against the same checkpoint..."
 setsid "$PYTHON_BIN" "$STREAM" >> "$LOG_FILE" 2>&1 &
 SPARK_PID=$!
 
-wait_for_log "RESILIENCE_BATCH_RESULT=$NEXT_BATCH_ID:PASS" 180
-# Give Spark time to commit the completed batch's offsets to the checkpoint.
+wait_for_log "RESILIENCE_BATCH_RESULT=$FIRST_BATCH_ID:PASS" 180
+# Confirm the same batch ID appeared twice: initial sink write, then checkpoint replay.
+BATCH_ID_OCCURRENCES="$(grep -Fc "RESILIENCE_BATCH_ID=$FIRST_BATCH_ID" "$LOG_FILE" || true)"
+[[ "$BATCH_ID_OCCURRENCES" -ge 2 ]] || {
+  echo "FAIL: expected the interrupted batch ID to be replayed; saw it $BATCH_ID_OCCURRENCES time(s)." >&2
+  tail -120 "$LOG_FILE" >&2 || true
+  exit 1
+}
+# Give the query time to finish committing the replayed batch.
 sleep 5
 verify_with_retry "$SECOND_REPORT" 30
 cat "$SECOND_REPORT"
@@ -158,7 +159,7 @@ SECOND_ROWS="$("$PYTHON_BIN" -c 'import json,sys; print(json.load(open(sys.argv[
   exit 1
 }
 
-echo "PASS: output rows all have event_count=1 and row count stayed $SECOND_ROWS across crash/restart."
+echo "PASS: batch $FIRST_BATCH_ID was replayed from the same checkpoint; output rows have event_count=1 and row count stayed $SECOND_ROWS."
 echo "Machine ID: $MACHINE_ID"
 echo "Review the log and save the JSON output as acceptance evidence."
 echo "Scope: test stream and local Kafka/HBase only; this does not prove all crash timings or production-scale reliability."
