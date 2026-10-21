@@ -1,0 +1,3 @@
+# Install Apache Airflow separately using constraints
+# appropriate for the chosen Airflow and Python versions.
+databricks-sdk>=0.40,<1
