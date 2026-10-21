@@ -121,7 +121,7 @@ Additional acceptance modules are being prepared on the `acceptance/hadoop-sqoop
 - `hadoop/mapreduce/` — Hadoop Streaming mapper/reducer, local tests, and an HDFS/YARN job runner.
 - `hadoop/sqoop/` — demo MySQL source schema and Sqoop imports for machine master, maintenance history and work orders.
 - `kafka/resilience/` — separate three-broker Kafka Compose stack and broker-failure/zero-loss drill.
-- `spark_streaming/resilience/` — checkpoint restart, duplicate-event and HBase idempotency drill.
+- `spark_streaming/resilience/` — checkpoint restart/replay and HBase idempotency drill.
 - `docs/resilience_acceptance.md` — commands, scope, prerequisites, and acceptance evidence checklist.
 
 These scripts do not by themselves mark the operational requirements as passed. Run the drills against the required services and retain their logs/count comparisons before claiming acceptance.
