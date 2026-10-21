@@ -112,3 +112,16 @@ The saved model artifacts were created with different scikit-learn versions:
 Use the matching scikit-learn version when loading each model. Loading a model with a different version may produce compatibility warnings or unexpected behavior. Matching versions are recommended; successful loading alone does not guarantee compatibility.
 
 The repository's `requirements.txt` currently permits scikit-learn versions from 1.5 up to, but not including, 2.0. The dependency range does not enforce the version used to create each saved model.
+
+
+## Hadoop, Sqoop and resilience acceptance
+
+Additional acceptance modules are being prepared on the `acceptance/hadoop-sqoop-resilience` branch:
+
+- `hadoop/mapreduce/` — Hadoop Streaming mapper/reducer, local tests, and an HDFS/YARN job runner.
+- `hadoop/sqoop/` — demo MySQL source schema and Sqoop imports for machine master, maintenance history and work orders.
+- `kafka/resilience/` — separate three-broker Kafka Compose stack and broker-failure/zero-loss drill.
+- `spark_streaming/resilience/` — checkpoint restart, duplicate-event and HBase idempotency drill.
+- `docs/resilience_acceptance.md` — commands, scope, prerequisites, and acceptance evidence checklist.
+
+These scripts do not by themselves mark the operational requirements as passed. Run the drills against the required services and retain their logs/count comparisons before claiming acceptance.
