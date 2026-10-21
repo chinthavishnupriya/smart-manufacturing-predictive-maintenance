@@ -30,7 +30,7 @@ Compare source SQL COUNT(*) for machine_master, maintenance_history and work_ord
 
 ## 3. Kafka broker-failure drill
 
-The existing kafka/docker-compose.yml is a one-broker development stack with replication factor 1, so it cannot prove broker fault tolerance. The isolated stack at kafka/resilience/docker-compose.yml uses three KRaft broker/controller nodes, topic replication factor 3, min.insync.replicas=2 and acks=all. It uses ports 19092-39092 and separate named volumes.
+The existing kafka/docker-compose.yml is a one-broker development stack with replication factor 1, so it cannot prove broker fault tolerance. The acceptance harness uses separate containers, ports and volumes and does not modify the existing stack. The isolated stack at kafka/resilience/docker-compose.yml uses three KRaft broker/controller nodes, topic replication factor 3, min.insync.replicas=2 and acks=all. It uses ports 19092-39092 and separate named volumes.
 
     bash kafka/resilience/run_broker_failure_drill.sh
 
@@ -46,7 +46,7 @@ The script stops broker 1, produces through the remaining brokers, restarts brok
 
 This isolated integration drill uses spark_streaming/sensor_stream_part3_test.py and a new checkpoint path per run. The test script supports a test-only pause after the HBase write and uses bounded duplicate detection by machine, event time and the complete measurement fingerprint within the 10-minute watermark horizon. The production stream and its existing checkpoint are not modified by this drill.
 
-Prerequisites: working Kafka at localhost:9092 with topic sensor_raw, HBase Thrift at localhost:9090 with sensor_anomalies table, models/rul_model.joblib, and a Python environment containing PySpark, kafka-python and happybase.
+Prerequisites: working Kafka at localhost:9092 and HBase Thrift at localhost:9090, models/rul_model.joblib, and a Python environment containing PySpark, kafka-python and happybase. The runner creates/reuses isolated resources named sensor_raw_resilience_test and sensor_anomalies_resilience_test by default; do not override these to the production topic/table.
 
     PYTHON_BIN="$PWD/.venv-spark/bin/python" bash spark_streaming/resilience/run_checkpoint_recovery_drill.sh
 
