@@ -5,10 +5,24 @@ import sys
 
 def ensure_topic(bootstrap: str, topic: str) -> None:
     try:
+        from kafka import KafkaConsumer
         from kafka.admin import KafkaAdminClient, NewTopic
         from kafka.errors import TopicAlreadyExistsError
     except ImportError as exc:
         raise RuntimeError("kafka-python is required; install the project streaming dependencies") from exc
+
+    consumer = KafkaConsumer(
+        bootstrap_servers=bootstrap,
+        request_timeout_ms=30000,
+        api_version_auto_timeout_ms=10000,
+    )
+    try:
+        existing_topics = consumer.topics()
+    finally:
+        consumer.close()
+    if topic in existing_topics:
+        print(f"Kafka topic already exists: {topic}")
+        return
 
     admin = KafkaAdminClient(
         bootstrap_servers=bootstrap,
@@ -17,9 +31,6 @@ def ensure_topic(bootstrap: str, topic: str) -> None:
         api_version_auto_timeout_ms=10000,
     )
     try:
-        if topic in admin.list_topics():
-            print(f"Kafka topic already exists: {topic}")
-            return
         futures = admin.create_topics([
             NewTopic(name=topic, num_partitions=1, replication_factor=1)
         ], validate_only=False)
