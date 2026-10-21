@@ -100,3 +100,15 @@ python ingestion/iot_simulator/producer.py --limit 20
 ## Important ML note
 
 Failure is an imbalanced target in this dataset. Accuracy is therefore not enough to judge the model. The training script reports precision, recall, F1 and ROC-AUC as well as accuracy.
+
+## Model version compatibility
+
+The saved model artifacts were created with different scikit-learn versions:
+
+- `models/predictive_maintenance_model.joblib` (FastAPI default): scikit-learn 1.8.0.
+- `models/predictive_maintenance_model_v191.joblib` (terminal prediction default): scikit-learn 1.9.1.
+- `models/predictive_maintenance_model_no_time_experimental.joblib` (experimental): scikit-learn 1.9.1, based on the recorded validation environment.
+
+Use the matching scikit-learn version when loading each model. Loading a model with a different version may produce compatibility warnings or unexpected behavior. Matching versions are recommended; successful loading alone does not guarantee compatibility.
+
+The repository's `requirements.txt` currently permits scikit-learn versions from 1.5 up to, but not including, 2.0. The dependency range does not enforce the version used to create each saved model.
