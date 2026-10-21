@@ -53,12 +53,12 @@ RUL_MODEL_PATH = (
 # CONFIGURATION
 # ============================================================
 
-KAFKA_SERVER = "localhost:9092"
-KAFKA_TOPIC = "sensor_raw"
+KAFKA_SERVER = os.getenv("KAFKA_SERVER", "localhost:9092")
+KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "sensor_raw")
 
-HBASE_HOST = "localhost"
-HBASE_PORT = 9090
-HBASE_TABLE = "sensor_anomalies"
+HBASE_HOST = os.getenv("HBASE_HOST", "localhost")
+HBASE_PORT = int(os.getenv("HBASE_PORT", "9090"))
+HBASE_TABLE = os.getenv("HBASE_TABLE", "sensor_anomalies")
 
 # IMPORTANT:
 # This is a NEW checkpoint for the RUL-enabled aggregation.
