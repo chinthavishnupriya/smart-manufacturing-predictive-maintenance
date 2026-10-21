@@ -29,14 +29,19 @@ class ResilienceAssetContractTests(unittest.TestCase):
         self.assertIn("--password-file", script)
         self.assertIn("refusing to overwrite", script)
 
-    def test_streaming_recovery_test_uses_dedup_and_isolated_checkpoint(self):
+    def test_streaming_recovery_replays_same_batch_with_isolated_checkpoint(self):
         source = (ROOT / "spark_streaming/sensor_stream_part3_test.py").read_text(encoding="utf-8")
         runner = (ROOT / "spark_streaming/resilience/run_checkpoint_recovery_drill.sh").read_text(encoding="utf-8")
-        self.assertIn("dropDuplicatesWithinWatermark", source)
         self.assertIn("SPARK_CHECKPOINT_LOCATION", source)
         self.assertIn("RESILIENCE_PAUSE_AFTER_HBASE_SECONDS", source)
-        self.assertIn("kill -KILL", runner)
+        self.assertIn("RESILIENCE_BATCH_ID=", source)
+        self.assertIn('outputMode("update")', source)
+        self.assertNotIn("dropDuplicatesWithinWatermark", source)
+        self.assertIn("kill -KILL --", runner)
+        self.assertIn("RESILIENCE_BATCH_RESULT=$FIRST_BATCH_ID:PASS", runner)
         self.assertIn("event_count=1", runner)
+        self.assertIn("sensor_raw_resilience_test", runner)
+        self.assertIn("sensor_anomalies_resilience_test", runner)
         self.assertIn("SPARK_CHECKPOINT_LOCATION", runner)
 
 if __name__ == "__main__":
