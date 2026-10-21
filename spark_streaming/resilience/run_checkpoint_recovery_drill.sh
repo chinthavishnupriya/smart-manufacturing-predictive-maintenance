@@ -12,6 +12,7 @@ PREPARE="$ROOT/spark_streaming/resilience/prepare_test_environment.py"
 [[ -x "$PYTHON_BIN" ]] || { echo "ERROR: Python environment not found: $PYTHON_BIN. Set PYTHON_BIN to the Spark/Kafka/HBase environment." >&2; exit 1; }
 [[ -f "$ROOT/models/rul_model.joblib" ]] || { echo "ERROR: models/rul_model.joblib is missing; required by the streaming test job." >&2; exit 1; }
 command -v timeout >/dev/null 2>&1 || { echo "ERROR: timeout command is required." >&2; exit 1; }
+command -v setsid >/dev/null 2>&1 || { echo "ERROR: setsid is required to stop the Spark parent and JVM together." >&2; exit 1; }
 
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 MACHINE_ID="RESILIENCE-${RUN_ID//[^a-zA-Z0-9_-]/-}"
@@ -36,7 +37,9 @@ export HBASE_TABLE="${HBASE_TABLE:-sensor_anomalies_resilience_test}"
 
 cleanup() {
   if [[ -n "$SPARK_PID" ]] && kill -0 "$SPARK_PID" 2>/dev/null; then
-    kill -TERM "$SPARK_PID" 2>/dev/null || true
+    kill -TERM -- "-$SPARK_PID" 2>/dev/null || true
+    sleep 2
+    kill -KILL -- "-$SPARK_PID" 2>/dev/null || true
     wait "$SPARK_PID" 2>/dev/null || true
   fi
   rm -f "$EVENT_FILE" "$FIRST_REPORT" "$SECOND_REPORT" "$FIRST_REPORT.err" "$SECOND_REPORT.err"
@@ -106,7 +109,7 @@ echo "Preparing isolated Kafka topic $KAFKA_TOPIC and HBase table $HBASE_TABLE..
   --hbase-host "$HBASE_HOST" --hbase-port "$HBASE_PORT" --hbase-table "$HBASE_TABLE"
 
 echo "Starting test stream with isolated checkpoint: $CHECKPOINT_URI"
-"$PYTHON_BIN" "$STREAM" > "$LOG_FILE" 2>&1 &
+setsid "$PYTHON_BIN" "$STREAM" > "$LOG_FILE" 2>&1 &
 SPARK_PID=$!
 wait_for_log "Smart Manufacturing Streaming Started" 120
 # Allow the query to establish its Kafka source before publishing.
@@ -133,13 +136,13 @@ echo "Publishing exact duplicate during the pause..."
 sleep 2
 
 echo "Killing the Spark test process before the microbatch callback returns..."
-kill -KILL "$SPARK_PID"
+kill -KILL -- "-$SPARK_PID"
 wait "$SPARK_PID" 2>/dev/null || true
 SPARK_PID=""
 
 unset RESILIENCE_PAUSE_AFTER_HBASE_SECONDS
 echo "Restarting test stream against the same checkpoint..."
-"$PYTHON_BIN" "$STREAM" >> "$LOG_FILE" 2>&1 &
+setsid "$PYTHON_BIN" "$STREAM" >> "$LOG_FILE" 2>&1 &
 SPARK_PID=$!
 
 wait_for_log "RESILIENCE_BATCH_RESULT=$NEXT_BATCH_ID:PASS" 180
