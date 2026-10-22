@@ -224,7 +224,6 @@ metrics = {
     "topic_isolated": True,
     "table_isolated": True,
     "warmup_events_excluded": warmup_count,
-    "measurement_mode": os.getenv("RESILIENCE_LATENCY_MODE", "sequential"),
     "expected_events": len(expected_ids),
     "observed_events": len(samples),
     "missing_machine_ids": missing,
