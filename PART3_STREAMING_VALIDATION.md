@@ -27,8 +27,8 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
   bash spark_streaming/resilience/run_latency_benchmark.sh
   ```
 
-- The revised benchmark publishes three unmeasured warm-up events, then measures ten uniquely identified events sequentially, waiting for each to reach HBase before publishing the next. It writes per-event samples, p50, p95, and maximum latency to `outputs/spark-latency-<run-id>.json`. It uses only `sensor_raw_resilience_test`, `sensor_anomalies_resilience_test`, and a fresh checkpoint. The target is p95 below 5,000 ms; do not mark PASS unless a real run produces that result.
-- The latest measured burst run (`20261022T061620Z-328915`) failed with p95 18.75 seconds. The warmed, sequential benchmark must be run to determine steady-state performance; startup effects are a possible explanation, not an assumed pass.
+- The revised benchmark publishes three unmeasured warm-up events, then measures ten uniquely identified events sequentially, waiting for each to reach HBase before publishing the next. It writes per-event samples, p50, p95, and maximum latency to `outputs/spark-latency-<run-id>.json`. It uses only `sensor_raw_resilience_test`, `sensor_anomalies_resilience_test`, and a fresh checkpoint.
+- The warmed sequential run (`20261022T062539Z-335222`) passed with p95 2.832 seconds. The earlier burst-style run (`20261022T061620Z-328915`) failed with p95 18.75 seconds, so burst-load and production-scale latency remain unverified.
 
 
 ### Recorded latency benchmark — 2026-10-22
@@ -61,14 +61,14 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 | Spark streaming processing | PASS | Fresh event processed in a new test checkpoint. |
 | HBase persistence | PASS | 10 sliding-window aggregate rows found. |
 | Restart row-count check | PASS (limited) | Row count remained 10 after restart. This alone does not prove end-to-end exactly-once processing. |
-| Alert/processing latency <5 s | NOT MET | Existing measurement ≈8.76 s; 2026-10-22 five-event benchmark p95 18.75 s (startup/queueing may affect it, but target failed). Run the warmed, sequential 10-event benchmark before assessing steady-state latency. |
+| Alert/processing latency <5 s | PASS for warmed sequential local benchmark; burst-load/production latency unverified | Run `20261022T062539Z-335222`; 10/10 measured events; p50 2.187 s; p95/max 2.832 s. The earlier burst-style run p95 was 18.753 s. |
 | Exactly-once/event deduplication | NOT FULLY VERIFIED | Deterministic HBase row keys support idempotent row upserts, but replayed duplicate input events have not been tested for aggregate double-counting. |
 
 ## Caveats and next steps
-1. Run the warmed, sequential latency benchmark with fresh events and record p50/p95 latency; continue profiling Spark batch processing and HBase writes if p95 remains at or above 5 seconds.
+1. Run a burst-load latency test with fresh events and record p50/p95; the current pass applies only to the warmed sequential local workload.
 2. Test broker interruption, Spark restart/checkpoint recovery, and duplicate-event replay explicitly before claiming exactly-once semantics.
 3. The current sensor RUL model is experimental; machine-held-out validation was weak (R² below zero). Do not treat its predictions as production-ready.
 4. The original production checkpoint was left untouched; the validation used `spark_streaming/sensor_stream_part3_test.py` and its separate `sensor_stream_hbase_rul_latency_v4_test` checkpoint.
 
 ## Conclusion
-Part 3 demonstrates a functioning live MQTT → Kafka → Spark → HBase path and persistence across a test-stream restart. It is **partially complete**, not fully acceptance-complete, because the <5-second latency goal and rigorous exactly-once/recovery tests remain outstanding.
+Part 3 demonstrates a functioning live MQTT → Kafka → Spark → HBase path, persistence across a test-stream restart, and a passing <5-second p95 target for the warmed sequential local benchmark. It remains **partially complete**: burst-load latency and intentional duplicate-event aggregation behavior have not been accepted, and the RUL model remains experimental.
