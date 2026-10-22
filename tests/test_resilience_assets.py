@@ -79,6 +79,11 @@ class ResilienceAssetContractTests(unittest.TestCase):
         self.assertIn('"target_p95_ms": 10000', runner)
         self.assertIn('"target_max_ms": 10000', runner)
         self.assertIn("max(ordered) < 10000", runner)
+        self.assertIn('LATENCY_MODE="${RESILIENCE_LATENCY_MODE:-sequential}"', runner)
+        self.assertIn('[[ "$LATENCY_MODE" == "sequential" || "$LATENCY_MODE" == "burst" ]]', runner)
+        self.assertIn('if [[ "$LATENCY_MODE" == "sequential" ]]; then', runner)
+        self.assertIn("Publishing burst event", runner)
+        self.assertIn('"measurement_mode": os.getenv("RESILIENCE_LATENCY_MODE", "sequential")', runner)
         self.assertIn("while query.lastProgress is None:", stream)
         self.assertIn('print("STREAMING_QUERY_ACTIVE", flush=True)', stream)
 
