@@ -115,7 +115,7 @@ PY
 
 publish_and_wait() {
   local machine_id="$1" event_file="$2"
-  "$PYTHON_BIN" "$PUBLISHER" --event-file "$event_file" \\
+  "$PYTHON_BIN" "$PUBLISHER" --event-file "$event_file" \
     --bootstrap "$KAFKA_BOOTSTRAP" --topic "$KAFKA_TOPIC"
   wait_for_log "LATENCY machine=$machine_id" 180
   # Let foreachBatch return and Spark commit before the next input.
