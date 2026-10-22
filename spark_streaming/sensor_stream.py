@@ -590,7 +590,7 @@ query = (
         CHECKPOINT_LOCATION
     )
     .trigger(
-        processingTime=os.getenv("SPARK_TRIGGER_INTERVAL", "5 seconds")
+        processingTime=os.getenv("SPARK_TRIGGER_INTERVAL", "1 second")
     )
     .start()
 )
