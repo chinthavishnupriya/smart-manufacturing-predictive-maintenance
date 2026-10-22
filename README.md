@@ -129,7 +129,8 @@ Acceptance work is maintained on the `acceptance/hadoop-sqoop-resilience` branch
 
 - **Passed in recorded runs:** Hadoop MapReduce; three Sqoop demo imports with count reconciliation; the tested Kafka broker outage; duplicate payload suppression in the isolated Spark/HBase test (all 10 rows remained at `event_count=1`); warmed sequential streaming latency under the instructor's 10-second threshold (10 events, p95/max 3.336 seconds).
 - **Passed after the event-ID/window-aggregation change:** Spark checkpoint recovery (batch 1 replayed; 10 HBase rows stayed at `event_count=1`), duplicate-payload suppression, and warmed sequential latency (p95/max 3.336 seconds).
-- **Still to execute:** warmed burst-mode latency (`RESILIENCE_LATENCY_MODE=burst`) and the updated Databricks reconciliation script, which checks table row counts and Gold machine grain and writes a JSON report.
+- **CI passed:** GitHub Actions run `39755265566` compiled the project entrypoints, validated shell syntax, and passed the Hadoop and resilience/Databricks contract suites.
+- **Still to execute in the configured service environment:** warmed burst-mode latency (`RESILIENCE_LATENCY_MODE=burst`) and the updated Databricks reconciliation script, which checks table row counts and Gold machine grain and writes a JSON report.
 - **Limitations to accept explicitly:** a prior burst-style run measured p95 18.75 seconds; Databricks run-specific filtering is only possible if a common run-ID column exists in all tables; the RUL model and high-volume window-state behavior are not yet production-validated.
 - **ML caveat:** machine-held-out RUL evaluation was weak (R² below zero); treat RUL output as experimental, not production-ready.
 
