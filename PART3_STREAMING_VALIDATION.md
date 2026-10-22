@@ -55,11 +55,13 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 
 
 
-### Duplicate-event validation procedure
+### Duplicate-event test and remediation
 
-- Added `spark_streaming/resilience/run_duplicate_event_drill.sh`. It publishes two copies of the exact same JSON payload to `sensor_raw_resilience_test`, confirms their Kafka offsets, waits for the checkpoint to cover both records and the corresponding sink batch to complete, and inspects all ten HBase window rows.
-- Expected observation without application-level deduplication: every window has `event_count=2`. In that case the runner prints `DUPLICATE_EVENT_RESULT=DOUBLE_COUNT_CONFIRMED` and exits nonzero to signal an acceptance gap.
-- The code currently aggregates with `count("*")` and does not define a stable logical event ID. Do not claim event-level deduplication before running this drill and implementing/validating an explicit identity policy.
+- Initial failing run: `20261022T064346Z-349036`; identical payloads were acknowledged at Kafka offsets `22` and `23`. All 10 HBase sliding-window rows ended at `event_count=2`, confirming that the previous implementation counted a duplicate logical reading twice.
+- Remediation committed on the acceptance branch: add an optional `event_id` to the sensor schema, prefer the producer-supplied stable ID, and derive a SHA-256 fingerprint of the complete sensor payload for legacy events without an ID. One windowed `collect_set` retains event payloads; the HBase callback deduplicates by ID before recomputing averages, variances, event counts, and anomaly counts.
+- This uses one stateful window aggregation instead of chaining a separate streaming deduplication operator with aggregation in Update mode. The windowed payload set grows with unique events in each active window; validate with representative load before treating it as a high-volume production design.
+- **Re-test required:** pull the latest branch and rerun `spark_streaming/resilience/run_duplicate_event_drill.sh`. It should print `DUPLICATE_EVENT_RESULT=DEDUPLICATED` and show `event_count=1` in all ten rows. Do not mark the fix as accepted until that live run passes.
+- Identity caveat: the payload fingerprint fallback treats two readings with identical machine, timestamp, measurements, and failure value as one event. Live producers should include a stable, unique `event_id` per logical reading to distinguish legitimate identical-valued readings.
 
 
 ## Acceptance status
@@ -70,13 +72,13 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 | HBase persistence | PASS | 10 sliding-window aggregate rows found. |
 | Restart row-count check | PASS (limited) | Row count remained 10 after restart. This alone does not prove end-to-end exactly-once processing. |
 | Alert/processing latency <5 s | PASS for warmed sequential local benchmark; burst-load/production latency unverified | Run `20261022T062539Z-335222`; 10/10 measured events; p50 2.187 s; p95/max 2.832 s. The earlier burst-style run p95 was 18.753 s. |
-| Exactly-once/event deduplication | NOT VERIFIED — duplicate-event drill added, not yet run | Run `spark_streaming/resilience/run_duplicate_event_drill.sh`; repeated identical payloads must remain `event_count=1` to pass. The existing checkpoint-replay drill only covers replay of the same uncommitted Kafka offsets. |
+| Duplicate logical event handling | FAIL confirmed on previous code; fix committed, live re-test pending | Initial run `20261022T064346Z-349036`, Kafka offsets 22/23, all 10 rows ended at `event_count=2`. New event-ID/`collect_set` remediation is committed but must be re-run with `spark_streaming/resilience/run_duplicate_event_drill.sh`; acceptance requires all rows to stay at 1. |
 
 ## Caveats and next steps
 1. Run a burst-load latency test with fresh events and record p50/p95; the current pass applies only to the warmed sequential local workload.
-2. Run `spark_streaming/resilience/run_duplicate_event_drill.sh` and implement/verify event-level deduplication if duplicate payloads increase counts; do not equate checkpoint replay with event deduplication.
+2. Re-run `spark_streaming/resilience/run_duplicate_event_drill.sh` after pulling the event-ID/`collect_set` fix; do not claim acceptance until all HBase windows remain at `event_count=1`.
 3. The current sensor RUL model is experimental; machine-held-out validation was weak (R² below zero). Do not treat its predictions as production-ready.
 4. The original production checkpoint was left untouched; the validation used `spark_streaming/sensor_stream_part3_test.py` and its separate `sensor_stream_hbase_rul_latency_v4_test` checkpoint.
 
 ## Conclusion
-Part 3 demonstrates a functioning live MQTT → Kafka → Spark → HBase path, persistence across a test-stream restart, and a passing <5-second p95 target for the warmed sequential local benchmark. It remains **partially complete**: burst-load latency and intentional duplicate-event aggregation behavior have not been accepted, and the RUL model remains experimental.
+Part 3 demonstrates a functioning live MQTT → Kafka → Spark → HBase path, persistence across a test-stream restart, and a passing <5-second p95 target for the warmed sequential local benchmark. It remains **partially complete**: burst-load latency is unverified, the new duplicate-event fix awaits a live re-test, and the RUL model remains experimental.
