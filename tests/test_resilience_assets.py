@@ -51,6 +51,11 @@ class ResilienceAssetContractTests(unittest.TestCase):
 
     def test_duplicate_event_drill_is_isolated_and_checks_aggregate_counts(self):
         runner = (ROOT / "spark_streaming/resilience/run_duplicate_event_drill.sh").read_text(encoding="utf-8")
+        publisher = (ROOT / "spark_streaming/resilience/publish_event.py").read_text(encoding="utf-8")
+        stream = (ROOT / "spark_streaming/sensor_stream_part3_test.py").read_text(encoding="utf-8")
+        self.assertIn("hashlib.sha256", publisher)
+        self.assertIn("event[\\"event_id\\"]", publisher)
+        self.assertIn("Conflicting sensor payloads reuse event_id", stream)
         for resource in ("sensor_raw_resilience_test", "sensor_anomalies_resilience_test"):
             self.assertIn(resource, runner)
         self.assertIn('--copies 2', runner)
