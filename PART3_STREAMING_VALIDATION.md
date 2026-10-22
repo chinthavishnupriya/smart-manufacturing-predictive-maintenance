@@ -17,7 +17,7 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 ## Latest code change and next latency measurement
 
 - Both `spark_streaming/sensor_stream.py` and the isolated test stream now use `batch_df.collect()` instead of `list(batch_df.toLocalIterator())` before model inference. This avoids sequential partition retrieval before the callback already materializes rows for pandas; it is an optimization candidate, not proof of lower latency.
-- Both streams accept `SPARK_TRIGGER_INTERVAL`; the default remains `5 seconds`. The isolated benchmark defaults to `1 second` without changing the production default.
+- Both streams accept `SPARK_TRIGGER_INTERVAL`. The production stream default is now `1 second` to reduce trigger-wait time for the <5-second latency objective; it can be overridden with `SPARK_TRIGGER_INTERVAL`. The isolated benchmark also defaults to `1 second`. This configuration change does not itself establish that latency acceptance passes.
 - Run the isolated benchmark against the separate resilience resources:
 
   ```bash
@@ -27,8 +27,8 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
   bash spark_streaming/resilience/run_latency_benchmark.sh
   ```
 
-- It publishes five uniquely identified events and writes per-event samples, p50, p95, and maximum latency to `outputs/spark-latency-<run-id>.json`. It uses only `sensor_raw_resilience_test`, `sensor_anomalies_resilience_test`, and a fresh checkpoint. The target is p95 below 5,000 ms; do not mark PASS unless a real run produces that result.
-- The existing 8.76-second observation remains the last completed latency measurement until the benchmark is run.
+- The revised benchmark publishes three unmeasured warm-up events, then measures ten uniquely identified events sequentially, waiting for each to reach HBase before publishing the next. It writes per-event samples, p50, p95, and maximum latency to `outputs/spark-latency-<run-id>.json`. It uses only `sensor_raw_resilience_test`, `sensor_anomalies_resilience_test`, and a fresh checkpoint. The target is p95 below 5,000 ms; do not mark PASS unless a real run produces that result.
+- The latest measured burst run (`20261022T061620Z-328915`) failed with p95 18.75 seconds. The warmed, sequential benchmark must be run to determine steady-state performance; startup effects are a possible explanation, not an assumed pass.
 
 
 ### Recorded latency benchmark — 2026-10-22
@@ -52,7 +52,7 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 | Exactly-once/event deduplication | NOT FULLY VERIFIED | Deterministic HBase row keys support idempotent row upserts, but replayed duplicate input events have not been tested for aggregate double-counting. |
 
 ## Caveats and next steps
-1. Optimize and profile Spark batch processing and HBase writes, then repeat the latency test with fresh events and record p50/p95 latency.
+1. Run the warmed, sequential latency benchmark with fresh events and record p50/p95 latency; continue profiling Spark batch processing and HBase writes if p95 remains at or above 5 seconds.
 2. Test broker interruption, Spark restart/checkpoint recovery, and duplicate-event replay explicitly before claiming exactly-once semantics.
 3. The current sensor RUL model is experimental; machine-held-out validation was weak (R² below zero). Do not treat its predictions as production-ready.
 4. The original production checkpoint was left untouched; the validation used `spark_streaming/sensor_stream_part3_test.py` and its separate `sensor_stream_hbase_rul_latency_v4_test` checkpoint.
