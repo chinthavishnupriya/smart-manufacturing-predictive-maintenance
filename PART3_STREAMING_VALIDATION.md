@@ -115,7 +115,7 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 
 ### Burst-load latency validation
 
-The benchmark now has two modes. The measured sequential mode has passed the under-10-second target after deduplication (run `20261022T082940Z-408408`, p95/max 3.336 seconds). A prior non-warmed burst-style run failed with p95 18.753 seconds. Run the warmed burst mode to decide whether the project can claim the target under burst load:
+The benchmark now has two modes. The warmed sequential test passed the instructor's under-10-second target (run `20261022T082940Z-408408`, p95/max 3.336 seconds). A prior non-warmed burst-style run failed with p95 18.753 seconds. Re-run a warmed burst using the latest code:
 
 ```bash
 RESILIENCE_LATENCY_MODE=burst \
@@ -125,7 +125,7 @@ KAFKA_BOOTSTRAP=localhost:19092 \
 bash spark_streaming/resilience/run_latency_benchmark.sh
 ```
 
-Only mark burst-load latency PASS if the new run observes every measured event and both p95 and maximum remain below 10 seconds. A sequential pass does not substitute for this result.
+Mark the burst target passed only if every event is observed and both p95 and maximum remain below 10 seconds. A sequential pass does not substitute for this check.
 
 ## Acceptance status
 | Check | Result | Notes |
@@ -139,9 +139,9 @@ Only mark burst-load latency PASS if the new run observes every measured event a
 
 ## Caveats and next steps
 1. Run a burst-load latency test with fresh events and record p50/p95; the current pass applies only to the warmed sequential local workload.
-2. Burst-load latency and Databricks run-scoped reconciliation remain open. Keep the event identity caveat documented: legacy fingerprinting can merge legitimate readings with identical payload fields.
+2. Run the new warmed burst-mode latency benchmark; the prior burst-style measurement failed the 10-second target. Run the updated Databricks reconciliation script to verify row counts and machine grain in a saved JSON report. The report supports run-ID filtering only if a common run-ID column actually exists in every target table. Keep the event identity caveat documented.
 3. The current sensor RUL model is experimental; machine-held-out validation was weak (R² below zero). Do not treat its predictions as production-ready.
-4. The prior checkpoint path is left untouched, and the production stream now defaults to a versioned `sensor_stream_hbase_event_dedup_v1` path to avoid reusing old state after the aggregation schema change. Acceptance drills use fresh run-specific checkpoints. The checkpoint crash/replay drill must be rerun after this code change.
+4. The prior checkpoint path is left untouched, and the production stream now defaults to a versioned `sensor_stream_hbase_event_dedup_v1` path. The latest checkpoint crash/replay run passed after this aggregation change.
 
 ## Conclusion
 Part 3 demonstrates a functioning live MQTT → Kafka → Spark → HBase path, persistence across a test-stream restart, a passing warmed sequential latency test against the instructor's under-10-second target (latest p95/max 3.336 seconds), and a passing identical-payload deduplication test. It remains **partially complete** until burst-load latency is validated or explicitly accepted as a limitation, Databricks run-scoped reconciliation is completed, and the experimental RUL model's limitations are accepted.
