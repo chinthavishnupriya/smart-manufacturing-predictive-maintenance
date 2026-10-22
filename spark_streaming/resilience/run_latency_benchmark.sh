@@ -101,6 +101,7 @@ import sys
 from datetime import datetime
 event = {
     "machine_id": sys.argv[1],
+    "event_id": f"{sys.argv[1]}-event-1",
     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     "temperature": 96.0,
     "vibration": 6.2,
