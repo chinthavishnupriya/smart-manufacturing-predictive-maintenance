@@ -41,6 +41,19 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 - The benchmark has since been revised to send three unmeasured warm-up events and then measure ten events sequentially, waiting for each to reach HBase before publishing the next. Run that version to measure steady-state latency. Keep the failed run as historical evidence rather than replacing it.
 
 
+
+### Recorded warmed sequential latency benchmark — 2026-10-22
+
+- Run ID: `20261022T062539Z-335222`.
+- Isolated Kafka topic: `sensor_raw_resilience_test`; isolated HBase table: `sensor_anomalies_resilience_test`.
+- Trigger interval: `1 second`; 3 warm-up events excluded; 10 uniquely identified measured events.
+- All **10/10** measured events were observed. No machine IDs were missing.
+- Per-event Kafka-ingest-to-HBase completion samples (ms): 2,832.237; 2,163.814; 2,628.891; 2,286.865; 2,381.211; 2,255.396; 2,186.979; 2,006.450; 1,809.567; 1,931.678.
+- p50: **2,186.979 ms**; p95 (nearest-rank over 10 samples): **2,832.237 ms**; max: **2,832.237 ms**.
+- Result: **PASS for the warmed, sequential local benchmark**, with p95 below 5,000 ms. This does not guarantee burst-load or production-scale latency; the earlier burst-style five-event run failed and remains recorded above.
+- Log: `outputs/spark-latency-20261022T062539Z-335222.log`; JSON metrics: `outputs/spark-latency-20261022T062539Z-335222.json`; isolated checkpoint: `checkpoints/spark-latency-20261022T062539Z-335222`.
+
+
 ## Acceptance status
 | Check | Result | Notes |
 |---|---|---|
