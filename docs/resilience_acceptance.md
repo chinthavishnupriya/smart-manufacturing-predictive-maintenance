@@ -184,6 +184,25 @@ Result: **Counts observed; run-scoped pipeline reconciliation remains partially 
 - Scope caveat: this is not a universal exactly-once guarantee. Re-run the checkpoint recovery and latency acceptance tests because event aggregation changed after those prior runs.
 
 
+
+### Updated Databricks reconciliation script
+
+The script now queries row counts and distinct machine IDs for each Bronze/Silver/Gold-related table, checks Silver/invalid counts against Bronze, checks each Gold output against Silver's distinct machine count, and saves a JSON report under `outputs/databricks-reconciliation-<UTC timestamp>.json`.
+
+Run it against the current snapshot:
+
+```bash
+DATABRICKS_CONFIG_PROFILE=dbc-bdad902e-fcf6 \
+.venv-airflow-clean/bin/python scripts/databricks_reconcile_counts.py
+```
+
+If the workspace later adds a common pipeline-run ID column to every target table, filter all five tables consistently with `--run-id` and `--run-id-column`. The script deliberately rejects that mode when the named column is missing. The earlier count snapshot alone does not prove the new grain checks passed; execute the revised script and retain its JSON output.
+
+### Latest Spark checkpoint replay after deduplication
+
+Run `20261022T090407Z-429792` passed: batch 1 replayed from the same checkpoint, HBase stayed at 10 rows, and every `event_count` remained 1. This proves the tested local crash timing, not every failure mode or production-scale reliability.
+
+
 ## Status at implementation time
 
 | Check | Status | Evidence still required |
@@ -195,4 +214,4 @@ Result: **Counts observed; run-scoped pipeline reconciliation remains partially 
 | Spark checkpoint crash/replay | PASS for the tested crash timing after event-ID/window-state change | Latest run `2026-10-22T09:04:07Z`, machine `RESILIENCE-20261022T090407Z-429792`, batch 1 replayed; 10 rows remained and every `event_count` stayed 1; log `outputs/spark-resilience-20261022T090407Z-429792.log`. Other failure timings/production scale not proven. |
 | Spark streaming latency | PASS — latest warmed sequential local run meets <10 s target; burst-load/production latency unverified | Run `2026-10-22T08:29:40Z`; 10/10 events; p50 2,546.593 ms; p95/max 3,336.116 ms; metrics `outputs/spark-latency-20261022T082940Z-408408.json`; earlier burst-style sample p95 18,753.364 ms |
 | Duplicate logical event handling | PASS for identical-payload test; broader semantics limited | Run `20261022T071051Z-365425`: offsets 26/27; all 10 HBase windows stayed at `event_count=1`; report `outputs/spark-duplicate-20261022T071051Z-365425.json`. Re-run checkpoint recovery and latency checks after this streaming change. |
-| Databricks Bronze/Silver/Gold reconciliation | Partially evidenced — table counts queried successfully, but not filtered to a specific ETL run | Job `Smart Manufacturing ETL Pipeline`, ID `74232591887481`; snapshot: Bronze 100,000, Silver 100,000, invalid 0, machine_health 100, downtime_kpis 100; prior history includes Free Edition `RESOURCE_EXHAUSTED` on run `303157520146527` and canceled run `310546345110678`; run-scoped counts/grain reconciliation still required |
+| Databricks Bronze/Silver/Gold reconciliation | Earlier table-count snapshot retrieved; updated machine-grain checks and JSON report added, execution pending | Job `Smart Manufacturing ETL Pipeline`, ID `74232591887481`; earlier snapshot: Bronze 100,000, Silver 100,000, invalid 0, machine_health 100, downtime_kpis 100. Run `DATABRICKS_CONFIG_PROFILE=dbc-bdad902e-fcf6 .venv-airflow-clean/bin/python scripts/databricks_reconcile_counts.py`. The script saves an evidence JSON and checks Gold's one-row-per-machine grain. Optional run-ID filtering requires a real common run-id column in all five tables. |
