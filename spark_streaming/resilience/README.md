@@ -15,7 +15,7 @@ This is an isolated test harness for checkpoint recovery: Spark is killed after 
 
 Optional overrides: `KAFKA_SERVER`, `KAFKA_BOOTSTRAP`, `HBASE_HOST`, `HBASE_PORT`. The dedicated test topic/table names can be changed with `KAFKA_TOPIC`/`HBASE_TABLE`, but must remain different from the live demo names.
 
-The runner assigns a unique machine ID and an isolated checkpoint, publishes one event and pauses the test stream after the HBase put but before the foreachBatch callback returns. It kills the Python/JVM process group, restarts against the same checkpoint, verifies the interrupted batch ID is replayed, and checks that each HBase window row still has event_count=1 and that row count does not increase across restart. It does not publish a second logical duplicate record.
+The runner assigns a unique machine ID and an isolated checkpoint, waits for the first completed Spark microbatch before publishing, then pauses the test stream after the HBase put but before the foreachBatch callback returns. It kills the Python/JVM process group, restarts against the same checkpoint, verifies the interrupted batch ID is replayed, and checks that each HBase window row still has event_count=1 and that row count does not increase across restart. It does not publish a second logical duplicate record.
 
 The crash-pause behavior is test-only and enabled only with `RESILIENCE_PAUSE_AFTER_HBASE_SECONDS`. The production stream and test stream share event-ID fingerprinting and window-aggregation logic, but the drill uses a unique machine ID, isolated Kafka topic/table names, and a fresh checkpoint. Logs are written to `outputs/` and checkpoints are retained under `checkpoints/` for inspection.
 
