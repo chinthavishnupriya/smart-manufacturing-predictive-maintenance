@@ -37,7 +37,7 @@ Run this to publish the **same JSON payload twice** to the isolated topic and in
 
 The runner uses a fresh checkpoint and unique machine ID. It checks the two Kafka acknowledgement offsets, waits for Spark's checkpoint to include both records and for the sink batch to finish, then verifies all ten sliding-window HBase rows.
 
-- `DUPLICATE_EVENT_RESULT=DEDUPLICATED` means all rows stayed at `event_count=1`.
-- `DUPLICATE_EVENT_RESULT=DOUBLE_COUNT_CONFIRMED` means all rows ended at `event_count=2`; the script exits nonzero because application-level duplicate suppression is not provided by the current aggregation.
+- `DUPLICATE_EVENT_RESULT=DEDUPLICATED` means all rows stayed at `event_count=1` after both Kafka offsets were processed.
+- `DUPLICATE_EVENT_RESULT=DOUBLE_COUNT_CONFIRMED` means all rows ended at `event_count=2`; the script exits nonzero to flag a deduplication regression or a stale code version.
 
-This is a negative acceptance test, not proof of universal exactly-once processing. The input schema does not require a stable producer-supplied event ID, so any later deduplication policy must choose a logical event identity carefully to avoid suppressing legitimate readings that happen to share the same values and timestamp.
+The stream prefers a producer-supplied stable `event_id`. Older payloads without one get a SHA-256 fingerprint of machine, timestamp, measurements, and failure. That fallback can treat legitimate identical-valued readings at the same timestamp as duplicates, so live producers should supply stable unique IDs. The windowed `collect_set` holds the unique event payloads for each active window; verify memory and latency under representative load. This isolated test is not proof of universal exactly-once processing.
