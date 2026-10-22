@@ -17,6 +17,15 @@ For cluster acceptance, configure Hadoop/HDFS/YARN and Python 3 on worker nodes,
 
 Capture successful YARN job status and output. The local contract test is not a cluster acceptance PASS.
 
+### Recorded Hadoop MapReduce cluster run
+
+- YARN application: `application_1792644122633_0001`; MapReduce job: `job_1792644122633_0001`.
+- Status: completed successfully on 2026-10-22.
+- Counters: 100,001 map-input records (CSV header included), 100,000 mapper output records, 100 reducer input groups, and 100 reducer output records.
+- HDFS output: `/user/vishnupriya/smart-manufacturing/output/machine_failure_rates_20261022_044209`.
+- Each output group reports 1,000 sensor records for one machine.
+- Caveat: the first `yarn node -list` call reported zero nodes, yet the submitted job completed. If cluster scheduling reliability matters for the final demo, investigate NodeManager registration later; do not rerun this successful job merely for that warning.
+
 ## 2. MySQL -> Sqoop -> HDFS
 
 The SQL schema and seeded demo rows are in hadoop/sqoop/mysql_source_schema.sql. Run against a demo MySQL database, create a least-privilege read-only account, and provide MySQL Connector/J to the installed Sqoop environment. Put the password in a restrictive HDFS password file; do not commit or print database passwords.
@@ -93,7 +102,7 @@ Only expect counts to match where row grain/filter definitions are the same. Sil
 | Check | Status | Evidence still required |
 |---|---|---|
 | Hadoop mapper/reducer local contract tests | PASS in clean validation mirror (3 tests) | Re-run in the project checkout after fetching this branch |
-| Hadoop HDFS/YARN MapReduce job | Not run | Successful real cluster job and output |
+| Hadoop HDFS/YARN MapReduce job | PASS — job `job_1792644122633_0001` completed successfully | Output `/user/vishnupriya/smart-manufacturing/output/machine_failure_rates_20261022_044209`; 100,001 input lines including header, 100,000 mapper records, 100 reducer groups, 100 output rows; note initial `yarn node -list` showed 0 nodes despite successful job |
 | MySQL/Sqoop imports | Not run | Three import logs plus source/HDFS count reconciliation |
 | Three-broker Kafka failure/zero-loss drill | PASS — 40/40 expected message IDs recovered exactly once | Run `2026-10-21T22:29:27Z`, topic `resilience-drill-20261021T222927Z-235155`; one broker stopped; 20 messages acknowledged during outage; RF=3, min ISR=2 |
 | Spark checkpoint crash/replay | PASS — batch 0 replayed; row count stayed 10 and all `event_count` values stayed 1 | Run `2026-10-22T04:35:26Z`; machine `RESILIENCE-20261022T043526Z-273114`; log `outputs/spark-resilience-20261022T043526Z-273114.log`; isolated Kafka topic/table and checkpoint |
