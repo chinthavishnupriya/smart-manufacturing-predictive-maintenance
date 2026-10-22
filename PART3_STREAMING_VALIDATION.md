@@ -74,6 +74,16 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 - This does not prove universal exactly-once processing. The legacy payload fingerprint can collapse legitimate same-machine events with identical timestamp and measurements; live producers should supply stable unique event IDs.
 
 
+
+### Latency benchmark attempt after event-deduplication change — inconclusive
+
+- Run ID: `20261022T071921Z-371811`.
+- The runner published warm-up event `WARMUP-20261022T071921Z-371811-1` at Kafka offset `29` before Spark had resolved its `startingOffsets=latest` and completed its initial empty batch.
+- The runner timed out waiting for the event's latency log line. Spark then reported an empty batch; no latency samples were recorded.
+- Result: **INCONCLUSIVE — this is a benchmark startup/synchronization failure, not a latency measurement**.
+- Fix committed: the latency runner now waits for `STREAMING_QUERY_ACTIVE`, which the test stream emits only after the first microbatch completes, before publishing any warm-up events. Rerun before updating latency acceptance.
+
+
 ## Acceptance status
 | Check | Result | Notes |
 |---|---|---|
