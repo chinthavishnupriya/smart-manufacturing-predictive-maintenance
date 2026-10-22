@@ -96,6 +96,17 @@ On 2026-10-22, the runner successfully found the existing isolated Kafka topic b
 
 Result: **PASS for this tested crash timing and isolated local stack**. This does not establish exactly-once behavior under every failure timing or at production scale.
 
+
+### Recorded Spark checkpoint-recovery run after microbatch collection optimization
+
+- Run ID: `20261022T060638Z-322538`; batch ID replayed: `1`.
+- The first HBase write produced 10 sliding-window rows for machine `RESILIENCE-20261022T060638Z-322538`, and each row had `event_count=1`.
+- The Spark test process was killed before the callback returned, then restarted with the same checkpoint. Batch `1` replayed.
+- After replay, HBase still had 10 rows and every row still had `event_count=1`.
+- Log: `outputs/spark-resilience-20261022T060638Z-322538.log`. Checkpoint retained under `checkpoints/spark-resilience-20261022T060638Z-322538`.
+
+Result: **PASS for this tested crash timing after the microbatch collection change**. This remains limited to the isolated local stack and does not prove all crash timings or intentional duplicate-event aggregation behavior.
+
 ## 5. Databricks Bronze/Silver/Gold reconciliation
 
 The tracked repository has an Airflow DAG invoking a Databricks job, but the workspace pipeline source/table identifiers and current run evidence are not fully tracked here. Use the actual table names from the Databricks workspace and the same run ID/time range in every comparison:
@@ -114,6 +125,20 @@ Only expect counts to match where row grain/filter definitions are the same. Sil
 - The returned history also includes run `303157520146527`, lifecycle `INTERNAL_ERROR`, result `FAILED`, with message `RESOURCE_EXHAUSTED`: the Free Edition daily resource limit prevented cluster launch and downstream tasks were skipped; run `310546345110678` was canceled.
 - This confirms previous successful job executions but provides no Bronze/Silver/Gold table counts, schemas, grain, or run-filter reconciliation. Do **not** mark data reconciliation PASS based on run states alone. Fresh execution may remain blocked while the daily quota is exhausted.
 
+
+### Recorded Databricks table-count snapshot
+
+- Date: 2026-10-22. Query used the `Serverless Starter Warehouse` (`aa7aac0d7e51d340`); it was stopped before the check, reached `RUNNING`, and a stop was requested afterward.
+- `workspace.default.sensor_bronze`: **100,000** rows.
+- `workspace.default.sensor_silver`: **100,000** rows.
+- `workspace.default.sensor_invalid_records`: **0** rows.
+- `workspace.default.machine_health`: **100** rows.
+- `workspace.default.downtime_kpis`: **100** rows.
+- The SQL count query completed successfully for all five tables. The query did not filter by a specific ETL run ID/time window, so this is a current table-count snapshot—not run-scoped Bronze/Silver/Gold reconciliation. Gold's 100-row grain is also aggregated relative to sensor-level Bronze/Silver.
+- The local SDK error from passing a raw string for `on_wait_timeout` was corrected in `scripts/databricks_reconcile_counts.py` by using `ExecuteStatementRequestOnWaitTimeout.CONTINUE`.
+
+Result: **Counts observed; run-scoped pipeline reconciliation remains partially evidenced**.
+
 ## Status at implementation time
 
 | Check | Status | Evidence still required |
@@ -122,5 +147,5 @@ Only expect counts to match where row grain/filter definitions are the same. Sil
 | Hadoop HDFS/YARN MapReduce job | PASS — job `job_1792644122633_0001` completed successfully | Output `/user/vishnupriya/smart-manufacturing/output/machine_failure_rates_20261022_044209`; 100,001 input lines including header, 100,000 mapper records, 100 reducer groups, 100 output rows; note initial `yarn node -list` showed 0 nodes despite successful job |
 | MySQL/Sqoop imports | PASS — all three tables imported through Sqoop/YARN; source and HDFS counts match | Run `2026-10-22 04:51–04:54 UTC`, HDFS base `/user/vishnupriya/smart-manufacturing/sqoop-imports/20261022_045148`; machine_master 5/5, maintenance_history 3/3, work_orders 2/2 |
 | Three-broker Kafka failure/zero-loss drill | PASS — 40/40 expected message IDs recovered exactly once | Run `2026-10-21T22:29:27Z`, topic `resilience-drill-20261021T222927Z-235155`; one broker stopped; 20 messages acknowledged during outage; RF=3, min ISR=2 |
-| Spark checkpoint crash/replay | PASS — batch 0 replayed; row count stayed 10 and all `event_count` values stayed 1 | Run `2026-10-22T04:35:26Z`; machine `RESILIENCE-20261022T043526Z-273114`; log `outputs/spark-resilience-20261022T043526Z-273114.log`; isolated Kafka topic/table and checkpoint |
-| Databricks Bronze/Silver/Gold reconciliation | Partially evidenced — many historical job runs show SUCCESS; row reconciliation not verified | Job `Smart Manufacturing ETL Pipeline`, ID `74232591887481`; run history also includes `303157520146527` failing from Free Edition `RESOURCE_EXHAUSTED` and run `310546345110678` canceled; need table names and comparable counts to pass reconciliation |
+| Spark checkpoint crash/replay | PASS — batch 1 replayed after the collection change; row count stayed 10 and all `event_count` values stayed 1 | Run `2026-10-22T06:06:38Z`; machine `RESILIENCE-20261022T060638Z-322538`; log `outputs/spark-resilience-20261022T060638Z-322538.log`; isolated Kafka topic/table and checkpoint |
+| Databricks Bronze/Silver/Gold reconciliation | Partially evidenced — table counts queried successfully, but not filtered to a specific ETL run | Job `Smart Manufacturing ETL Pipeline`, ID `74232591887481`; snapshot: Bronze 100,000, Silver 100,000, invalid 0, machine_health 100, downtime_kpis 100; prior history includes Free Edition `RESOURCE_EXHAUSTED` on run `303157520146527` and canceled run `310546345110678`; run-scoped counts/grain reconciliation still required |
