@@ -114,14 +114,22 @@ Use the matching scikit-learn version when loading each model. Loading a model w
 The repository's `requirements.txt` currently permits scikit-learn versions from 1.5 up to, but not including, 2.0. The dependency range does not enforce the version used to create each saved model.
 
 
-## Hadoop, Sqoop and resilience acceptance
+## Hadoop, Sqoop and streaming resilience acceptance
 
-Additional acceptance modules are being prepared on the `acceptance/hadoop-sqoop-resilience` branch:
+Acceptance work is maintained on the `acceptance/hadoop-sqoop-resilience` branch and tracked in [PR #1](https://github.com/chinthavishnupriya/smart-manufacturing-predictive-maintenance/pull/1).
 
-- `hadoop/mapreduce/` — Hadoop Streaming mapper/reducer, local tests, and an HDFS/YARN job runner.
-- `hadoop/sqoop/` — demo MySQL source schema and Sqoop imports for machine master, maintenance history and work orders.
-- `kafka/resilience/` — separate three-broker Kafka Compose stack and broker-failure/zero-loss drill.
-- `spark_streaming/resilience/` — checkpoint restart/replay and HBase idempotency drill.
-- `docs/resilience_acceptance.md` — commands, scope, prerequisites, and acceptance evidence checklist.
+- `hadoop/mapreduce/` — Hadoop Streaming mapper/reducer and HDFS/YARN job runner. The recorded cluster job summarized 100,000 sensor rows into 100 machine rows.
+- `hadoop/sqoop/` — MySQL source schema and Sqoop imports for `machine_master`, `maintenance_history`, and `work_orders`; the recorded demo imports matched source counts (5, 3, and 2).
+- `kafka/resilience/` — separate three-broker Kafka stack and broker-failure/zero-loss drill; 40 acknowledged message IDs were recovered in the recorded outage test.
+- `spark_streaming/resilience/` — isolated checkpoint replay, duplicate-event, and Kafka-to-HBase latency drills.
+- `scripts/databricks_reconcile_counts.py` — query Bronze/Silver/Gold table counts with the configured Databricks SQL warehouse.
+- `docs/resilience_acceptance.md` and `PART3_STREAMING_VALIDATION.md` — test evidence, limitations, and remaining acceptance gates.
 
-These scripts do not by themselves mark the operational requirements as passed. Run the drills against the required services and retain their logs/count comparisons before claiming acceptance.
+### Current acceptance snapshot (2026-10-22)
+
+- **Passed in recorded runs:** Hadoop MapReduce; three Sqoop demo imports with count reconciliation; the tested Kafka broker outage; duplicate payload suppression in the isolated Spark/HBase test (all 10 rows remained at `event_count=1`); warmed sequential streaming latency under the instructor's 10-second threshold (10 events, p95/max 3.336 seconds).
+- **Requires one regression rerun:** Spark checkpoint recovery after the event-ID/window-aggregation code change.
+- **Still limited/unverified:** burst-load latency (a prior burst-style run measured p95 18.75 seconds), Databricks run-scoped row reconciliation, and production-scale behavior of the windowed payload set.
+- **ML caveat:** machine-held-out RUL evaluation was weak (R² below zero); treat RUL output as experimental, not production-ready.
+
+A test harness is not acceptance evidence by itself. Use the logs and row counts linked in `docs/resilience_acceptance.md`, rerun checks after streaming-code changes, and do not claim universal exactly-once or production-scale guarantees from the local drills.
