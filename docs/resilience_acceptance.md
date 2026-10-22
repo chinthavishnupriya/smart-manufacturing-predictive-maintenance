@@ -145,7 +145,7 @@ Only expect counts to match where row grain/filter definitions are the same. Sil
 - The SQL count query completed successfully for all five tables. The query did not filter by a specific ETL run ID/time window, so this is a current table-count snapshot—not run-scoped Bronze/Silver/Gold reconciliation. Gold's 100-row grain is also aggregated relative to sensor-level Bronze/Silver.
 - The local SDK error from passing a raw string for `on_wait_timeout` was corrected in `scripts/databricks_reconcile_counts.py` by using `ExecuteStatementRequestOnWaitTimeout.CONTINUE`.
 
-Result: **Counts observed; run-scoped pipeline reconciliation remains partially evidenced**.
+Result: **Current-snapshot row-count and machine-grain checks PASS**. Run-scoped lineage remains unavailable without a shared run-ID column in the tables.
 
 
 
@@ -214,7 +214,7 @@ DATABRICKS_CONFIG_PROFILE=dbc-bdad902e-fcf6 \
 .venv-airflow-clean/bin/python scripts/databricks_reconcile_counts.py
 ```
 
-If the workspace later adds a common pipeline-run ID column to every target table, filter all five tables consistently with `--run-id` and `--run-id-column`. The script deliberately rejects that mode when the named column is missing. The earlier count snapshot alone does not prove the new grain checks passed; execute the revised script and retain its JSON output.
+If the workspace later adds a common pipeline-run ID column to every target table, filter all five tables consistently with `--run-id` and `--run-id-column`. The script deliberately rejects that mode when the named column is missing. Recorded current-snapshot run below confirms the updated grain checks passed and the JSON report was written.
 
 ### Recorded current-snapshot Databricks reconciliation — 2026-10-22
 
@@ -244,5 +244,5 @@ Run `20261022T090407Z-429792` passed: batch 1 replayed from the same checkpoint,
 | Three-broker Kafka failure/zero-loss drill | PASS — 40/40 expected message IDs recovered exactly once | Run `2026-10-21T22:29:27Z`, topic `resilience-drill-20261021T222927Z-235155`; one broker stopped; 20 messages acknowledged during outage; RF=3, min ISR=2 |
 | Spark checkpoint crash/replay | PASS for the tested crash timing after event-ID/window-state change | Latest run `2026-10-22T09:04:07Z`, machine `RESILIENCE-20261022T090407Z-429792`, batch 1 replayed; 10 rows remained and every `event_count` stayed 1; log `outputs/spark-resilience-20261022T090407Z-429792.log`. Other failure timings/production scale not proven. |
 | Spark streaming latency | PASS — warmed sequential and warmed 10-event burst both meet <10 s target; sustained production load not tested | Sequential run `2026-10-22T08:29:40Z`: p95/max 3,336.116 ms. Burst run `2026-10-22T09:28:18Z`: 10/10 events, p95/max 3,970.166 ms; metrics `outputs/spark-latency-20261022T092818Z-443844.json`. |
-| Duplicate logical event handling | PASS for identical-payload test; broader semantics limited | Run `20261022T071051Z-365425`: offsets 26/27; all 10 HBase windows stayed at `event_count=1`; report `outputs/spark-duplicate-20261022T071051Z-365425.json`. Subsequent regression runs after this streaming change: checkpoint replay `20261022T090407Z-429792` passed, and warmed sequential latency `20261022T082940Z-408408` passed the under-10-second target. |
-| Databricks Bronze/Silver/Gold reconciliation | Earlier table-count snapshot retrieved; updated machine-grain checks and JSON report added, execution pending | Job `Smart Manufacturing ETL Pipeline`, ID `74232591887481`; earlier snapshot: Bronze 100,000, Silver 100,000, invalid 0, machine_health 100, downtime_kpis 100. Run `DATABRICKS_CONFIG_PROFILE=dbc-bdad902e-fcf6 .venv-airflow-clean/bin/python scripts/databricks_reconcile_counts.py`. The script saves an evidence JSON and checks Gold's one-row-per-machine grain. The new script passed GitHub Actions syntax/contract checks, but its live SQL reconciliation has not yet been executed. Optional run-ID filtering requires a real common run-id column in all five tables. |
+| Duplicate logical event handling | PASS for the tested identical-payload case; broader semantics limited | Run `20261022T071051Z-365425`: offsets 26/27; all 10 HBase windows stayed at `event_count=1`; report `outputs/spark-duplicate-20261022T071051Z-365425.json`. After the deduplication change, checkpoint replay `20261022T090407Z-429792`, sequential latency `20261022T082940Z-408408`, and warmed burst latency `20261022T092818Z-443844` all passed their defined local test cases. |
+| Databricks current-snapshot count/grain reconciliation | PASS — all five checks passed; run-scoped lineage unavailable without a common run ID column | Report `outputs/databricks-reconciliation-20261022T093138Z.json`: Bronze 100,000 / 100 machines; Silver 100,000 / 100 machines; invalid 0; machine_health 100 / 100 machines; downtime_kpis 100 / 100 machines. Checks passed for Silver <= Bronze, invalid <= Bronze, Gold rows matching Silver's distinct machine count, and equal Gold output counts. |
