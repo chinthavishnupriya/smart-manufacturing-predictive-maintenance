@@ -153,10 +153,17 @@ Result: **Counts observed; run-scoped pipeline reconciliation remains partially 
 - Run: `20261022T062539Z-335222`; isolated topic `sensor_raw_resilience_test`; isolated table `sensor_anomalies_resilience_test`.
 - Trigger interval was one second. Three warm-up events were excluded, followed by ten unique events sent sequentially; the next event was sent after the previous event had been observed by the HBase sink.
 - All 10 measured events were observed. p50 was 2,186.979 ms, p95 2,832.237 ms, and maximum 2,832.237 ms.
-- Result: **PASS for this warmed sequential local measurement** with p95 below 5,000 ms. The prior burst-style sample had p95 18,753.364 ms; burst-load and production-scale latency are not established by the sequential test.
+- Result: **PASS for this warmed sequential local measurement** with p95 and max below 10,000 ms. The prior burst-style sample had p95 18,753.364 ms; burst-load and production-scale latency are not established by the sequential test.
 - Log: `outputs/spark-latency-20261022T062539Z-335222.log`; metrics: `outputs/spark-latency-20261022T062539Z-335222.json`; checkpoint: `checkpoints/spark-latency-20261022T062539Z-335222`.
 
 
+
+### Recorded post-dedup latency benchmark
+
+- Run: `20261022T082940Z-408408`; 3 warm-up events, 10 measured events, all 10 observed.
+- p50 `2,546.593 ms`; p95 `3,336.116 ms`; max `3,336.116 ms`. All observed samples were below the instructor's 10-second limit.
+- Result: **PASS for warmed sequential local workload**. Burst-load and production-scale latency remain unverified.
+- Metrics: `outputs/spark-latency-20261022T082940Z-408408.json`; log: `outputs/spark-latency-20261022T082940Z-408408.log`.
 
 ### Recorded duplicate-event deduplication pass
 
@@ -176,6 +183,6 @@ Result: **Counts observed; run-scoped pipeline reconciliation remains partially 
 | MySQL/Sqoop imports | PASS — all three tables imported through Sqoop/YARN; source and HDFS counts match | Run `2026-10-22 04:51–04:54 UTC`, HDFS base `/user/vishnupriya/smart-manufacturing/sqoop-imports/20261022_045148`; machine_master 5/5, maintenance_history 3/3, work_orders 2/2 |
 | Three-broker Kafka failure/zero-loss drill | PASS — 40/40 expected message IDs recovered exactly once | Run `2026-10-21T22:29:27Z`, topic `resilience-drill-20261021T222927Z-235155`; one broker stopped; 20 messages acknowledged during outage; RF=3, min ISR=2 |
 | Spark checkpoint crash/replay | PASS — batch 1 replayed after the collection change; row count stayed 10 and all `event_count` values stayed 1 | Run `2026-10-22T06:06:38Z`; machine `RESILIENCE-20261022T060638Z-322538`; log `outputs/spark-resilience-20261022T060638Z-322538.log`; isolated Kafka topic/table and checkpoint |
-| Spark streaming latency | PASS for warmed sequential local benchmark; burst-load/production latency unverified | Run `2026-10-22T06:25:39Z`; 10/10 events; p50 2,186.979 ms; p95/max 2,832.237 ms; metrics `outputs/spark-latency-20261022T062539Z-335222.json`; earlier burst-style sample p95 18,753.364 ms |
+| Spark streaming latency | PASS — latest warmed sequential local run meets <10 s target; burst-load/production latency unverified | Run `2026-10-22T08:29:40Z`; 10/10 events; p50 2,546.593 ms; p95/max 3,336.116 ms; metrics `outputs/spark-latency-20261022T082940Z-408408.json`; earlier burst-style sample p95 18,753.364 ms |
 | Duplicate logical event handling | PASS for identical-payload test; broader semantics limited | Run `20261022T071051Z-365425`: offsets 26/27; all 10 HBase windows stayed at `event_count=1`; report `outputs/spark-duplicate-20261022T071051Z-365425.json`. Re-run checkpoint recovery and latency checks after this streaming change. |
 | Databricks Bronze/Silver/Gold reconciliation | Partially evidenced — table counts queried successfully, but not filtered to a specific ETL run | Job `Smart Manufacturing ETL Pipeline`, ID `74232591887481`; snapshot: Bronze 100,000, Silver 100,000, invalid 0, machine_health 100, downtime_kpis 100; prior history includes Free Edition `RESOURCE_EXHAUSTED` on run `303157520146527` and canceled run `310546345110678`; run-scoped counts/grain reconciliation still required |
