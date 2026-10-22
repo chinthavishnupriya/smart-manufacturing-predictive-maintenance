@@ -106,12 +106,26 @@ for path in offset_dir.iterdir():
         continue
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
-        payload_line = next(line for line in lines if line.startswith("{"))
-        payload = json.loads(payload_line)
-        offsets = payload.get(topic, {})
-        end_offset = max((int(value) for value in offsets.values()), default=-1)
-        if end_offset >= target_end_offset:
-            eligible.append(int(path.name))
+        # Spark Kafka offset-log files contain a metadata JSON object followed
+        # by the Kafka source-offset JSON object. Inspect every JSON line,
+        # rather than mistaking the metadata object for the offset map.
+        for line in lines:
+            if not line.startswith("{"):
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            offsets = payload.get(topic)
+            if not isinstance(offsets, dict):
+                continue
+            end_offset = max(
+                (int(value) for value in offsets.values()),
+                default=-1,
+            )
+            if end_offset >= target_end_offset:
+                eligible.append(int(path.name))
+                break
     except (OSError, ValueError, StopIteration, json.JSONDecodeError, TypeError):
         continue
 
