@@ -31,15 +31,29 @@ def ensure_topic(bootstrap: str, topic: str) -> None:
         api_version_auto_timeout_ms=10000,
     )
     try:
-        futures = admin.create_topics([
+        # kafka-python versions differ: create_topics may return a response
+        # object (older versions) or a mapping of futures (newer versions).
+        response = admin.create_topics([
             NewTopic(name=topic, num_partitions=1, replication_factor=1)
         ], validate_only=False)
-        future = futures.get(topic)
-        if future is not None:
-            try:
-                future.result(timeout=30)
-            except TopicAlreadyExistsError:
-                pass
+        if hasattr(response, "topic_errors"):
+            errors = [
+                item for item in response.topic_errors
+                if getattr(item, "error_code", 0) not in (0, 36)
+            ]
+            if errors:
+                raise RuntimeError(f"Kafka topic creation failed: {errors}")
+        elif hasattr(response, "get"):
+            future = response.get(topic)
+            if future is not None:
+                try:
+                    future.result(timeout=30)
+                except TopicAlreadyExistsError:
+                    pass
+        else:
+            raise RuntimeError(
+                f"Unsupported kafka-python create_topics response type: {type(response).__name__}"
+            )
         print(f"Kafka test topic ready: {topic}")
     finally:
         admin.close()
