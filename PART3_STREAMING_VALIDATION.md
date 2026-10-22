@@ -117,7 +117,7 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 1. Run a burst-load latency test with fresh events and record p50/p95; the current pass applies only to the warmed sequential local workload.
 2. Re-run checkpoint recovery after the event-ID/`collect_set` change; the warmed sequential latency benchmark has already been rerun and passed under the 10-second target. Keep event identity caveats documented.
 3. The current sensor RUL model is experimental; machine-held-out validation was weak (R² below zero). Do not treat its predictions as production-ready.
-4. The original production checkpoint was left untouched; the validation used `spark_streaming/sensor_stream_part3_test.py` and its separate `sensor_stream_hbase_rul_latency_v4_test` checkpoint.
+4. The prior checkpoint path is left untouched, and the production stream now defaults to a versioned `sensor_stream_hbase_event_dedup_v1` path to avoid reusing old state after the aggregation schema change. Acceptance drills use fresh run-specific checkpoints. The checkpoint crash/replay drill must be rerun after this code change.
 
 ## Conclusion
 Part 3 demonstrates a functioning live MQTT → Kafka → Spark → HBase path, persistence across a test-stream restart, a passing warmed sequential latency test against the instructor's under-10-second target (latest p95/max 3.336 seconds), and a passing identical-payload deduplication test. It remains **partially complete** until checkpoint recovery is rerun after the event-deduplication change, burst-load latency is validated or explicitly accepted as a limitation, Databricks run-scoped reconciliation is completed, and the experimental RUL model's limitations are accepted.
