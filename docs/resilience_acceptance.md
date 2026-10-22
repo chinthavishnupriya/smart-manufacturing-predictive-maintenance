@@ -68,6 +68,16 @@ The runner publishes one event, pauses after HBase has been written but before f
 
 On 2026-10-22, the runner successfully found the existing isolated Kafka topic but failed to connect to HBase Thrift at `localhost:9090` (`TTransportException`). This is a **prerequisite blocker**, not a Spark recovery-test failure: Spark had not started and no checkpoint/replay acceptance result was produced. Confirm the HBase Thrift service is running and reachable at the configured host/port before rerunning.
 
+### Recorded Spark checkpoint-recovery run
+
+- Run ID: `20261022T043526Z-273114`; batch ID replayed: `0`.
+- The first HBase write produced 10 sliding-window rows for machine `RESILIENCE-20261022T043526Z-273114`, each with `event_count=1`.
+- Spark was killed before the callback returned, then restarted using the same checkpoint.
+- The same batch ID replayed; the post-restart result still had 10 rows and all `event_count` values remained 1.
+- Log: `outputs/spark-resilience-20261022T043526Z-273114.log`. Local checkpoint retained under `checkpoints/spark-resilience-20261022T043526Z-273114`.
+
+Result: **PASS for this tested crash timing and isolated local stack**. This does not establish exactly-once behavior under every failure timing or at production scale.
+
 ## 5. Databricks Bronze/Silver/Gold reconciliation
 
 The tracked repository has an Airflow DAG invoking a Databricks job, but the workspace pipeline source/table identifiers and current run evidence are not fully tracked here. Use the actual table names from the Databricks workspace and the same run ID/time range in every comparison:
@@ -86,5 +96,5 @@ Only expect counts to match where row grain/filter definitions are the same. Sil
 | Hadoop HDFS/YARN MapReduce job | Not run | Successful real cluster job and output |
 | MySQL/Sqoop imports | Not run | Three import logs plus source/HDFS count reconciliation |
 | Three-broker Kafka failure/zero-loss drill | PASS — 40/40 expected message IDs recovered exactly once | Run `2026-10-21T22:29:27Z`, topic `resilience-drill-20261021T222927Z-235155`; one broker stopped; 20 messages acknowledged during outage; RF=3, min ISR=2 |
-| Spark checkpoint crash/replay | BLOCKED at prerequisite check — HBase Thrift unreachable on `localhost:9090`; Spark did not start | Attempt `2026-10-22T04:20:55Z`; Kafka topic `sensor_raw_resilience_test` already exists; start/locate HBase Thrift, then rerun and retain complete log |
+| Spark checkpoint crash/replay | PASS — batch 0 replayed; row count stayed 10 and all `event_count` values stayed 1 | Run `2026-10-22T04:35:26Z`; machine `RESILIENCE-20261022T043526Z-273114`; log `outputs/spark-resilience-20261022T043526Z-273114.log`; isolated Kafka topic/table and checkpoint |
 | Databricks Bronze/Silver/Gold reconciliation | Not verified | Actual workspace run ID/table names/count comparisons |
