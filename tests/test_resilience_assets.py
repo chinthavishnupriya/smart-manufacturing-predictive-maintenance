@@ -84,6 +84,7 @@ class ResilienceAssetContractTests(unittest.TestCase):
         self.assertIn('if [[ "$LATENCY_MODE" == "sequential" ]]; then', runner)
         self.assertIn("Publishing burst event", runner)
         self.assertIn('"measurement_mode": os.getenv("RESILIENCE_LATENCY_MODE", "sequential")', runner)
+        self.assertIn('RESILIENCE_LATENCY_MODE=burst', (ROOT / "PART3_STREAMING_VALIDATION.md").read_text(encoding="utf-8"))
         self.assertIn("while query.lastProgress is None:", stream)
         self.assertIn('print("STREAMING_QUERY_ACTIVE", flush=True)', stream)
 
