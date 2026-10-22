@@ -20,3 +20,11 @@ The runner assigns a unique machine ID and an isolated checkpoint, publishes one
 The test-stream changes are intentionally isolated from spark_streaming/sensor_stream.py and its production checkpoint. Logs are written to outputs/ and checkpoints are retained under checkpoints/ for inspection.
 
 A successful run is evidence for this exact local test path, not a universal exactly-once or production reliability guarantee. Save the full terminal output and log, and do not mark acceptance PASS if a prerequisite is missing or any check fails.
+
+## Latency benchmark
+
+Run the isolated Kafka-to-HBase latency measurement with the local streaming environment:
+
+    PYTHON_BIN="$PWD/.venv-spark/bin/python" KAFKA_SERVER=localhost:19092 KAFKA_BOOTSTRAP=localhost:19092 bash spark_streaming/resilience/run_latency_benchmark.sh
+
+The benchmark uses the same dedicated test topic/table names but a fresh checkpoint and unique machine IDs. It defaults to a one-second trigger only for this benchmark; the production and test stream default trigger remains five seconds unless `SPARK_TRIGGER_INTERVAL` is set. It stores per-event latency samples and p50/p95/max metrics in `outputs/spark-latency-<run-id>.json`. It fails if any expected sample is missing or p95 is not below 5,000 ms. This small local benchmark is not a production-scale percentile guarantee.
