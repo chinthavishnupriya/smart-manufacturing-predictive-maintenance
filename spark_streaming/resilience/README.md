@@ -35,7 +35,7 @@ Run this to publish the **same JSON payload twice** to the isolated topic and in
 
     PYTHON_BIN="$PWD/.venv-spark/bin/python" KAFKA_SERVER=localhost:19092 KAFKA_BOOTSTRAP=localhost:19092 bash spark_streaming/resilience/run_duplicate_event_drill.sh
 
-The runner uses a fresh checkpoint and unique machine ID. It checks the two Kafka acknowledgement offsets, waits for Spark's checkpoint to include both records and for the sink batch to finish, then verifies all ten sliding-window HBase rows.
+The runner uses a fresh checkpoint and unique machine ID. It waits for the first Spark microbatch to complete before publishing, so Kafka `startingOffsets=latest` has already been resolved. It then checks both Kafka acknowledgement offsets, waits for Spark's checkpoint to include both records and for the corresponding sink batch to finish, and verifies all ten sliding-window HBase rows.
 
 - `DUPLICATE_EVENT_RESULT=DEDUPLICATED` means all rows stayed at `event_count=1` after both Kafka offsets were processed.
 - `DUPLICATE_EVENT_RESULT=DOUBLE_COUNT_CONFIRMED` means all rows ended at `event_count=2`; the script exits nonzero to flag a deduplication regression or a stale code version.
