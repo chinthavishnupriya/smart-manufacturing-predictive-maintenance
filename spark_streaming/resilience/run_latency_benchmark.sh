@@ -132,7 +132,7 @@ echo "Preparing isolated topic $KAFKA_TOPIC and table $HBASE_TABLE..."
 echo "Starting stream: trigger=$SPARK_TRIGGER_INTERVAL checkpoint=$CHECKPOINT_URI"
 setsid "$PYTHON_BIN" "$STREAM" > "$LOG_FILE" 2>&1 &
 SPARK_PID=$!
-wait_for_log "Smart Manufacturing Streaming Started" 120
+wait_for_log "Smart Manufacturing Streaming Started" 300
 # The startup banner appears before the query resolves Kafka startingOffsets.
 # Wait for the first completed microbatch before publishing any benchmark event.
 wait_for_log "STREAMING_QUERY_ACTIVE" 180
