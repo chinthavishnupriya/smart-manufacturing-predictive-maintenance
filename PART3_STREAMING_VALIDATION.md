@@ -38,7 +38,7 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 - Per-event Kafka-ingest-to-HBase completion samples (ms): **18,753.364; 14,184.019; 8,218.649; 4,602.779; 2,261.059**.
 - Reported p50: **8,218.649 ms**; p95 (nearest-rank on five samples): **18,753.364 ms**; max: **18,753.364 ms**.
 - Result: **FAIL — the p95 target below 5,000 ms was not met in this run**. The declining values are consistent with startup/queueing effects, but that explanation is only a hypothesis; it does not erase the failed measurement.
-- The benchmark has since been revised to send three unmeasured warm-up events and then measure ten events sequentially, waiting for each to reach HBase before publishing the next. Run that version to measure steady-state latency. Keep the failed run as historical evidence rather than replacing it.
+- The warmed sequential rerun is recorded in a separate entry below and passed the under-10-second objective. Keep this failed burst-style measurement as historical evidence rather than replacing it.
 
 
 
