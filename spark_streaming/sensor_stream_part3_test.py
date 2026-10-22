@@ -61,10 +61,10 @@ HBASE_PORT = int(os.getenv("HBASE_PORT", "9090"))
 HBASE_TABLE = os.getenv("HBASE_TABLE", "sensor_anomalies")
 
 # IMPORTANT:
-# This is a NEW checkpoint for the RUL-enabled aggregation.
+# This checkpoint version includes event-ID-deduplicating window aggregate state.
 CHECKPOINT_LOCATION = os.getenv(
     "SPARK_CHECKPOINT_LOCATION",
-    "file:///home/vishnupriya/smart-manufacturing-checkpoints/sensor_stream_hbase_resilience_acceptance_v1",
+    "file:///home/vishnupriya/smart-manufacturing-checkpoints/sensor_stream_hbase_resilience_event_dedup_v1",
 )
 
 KAFKA_PACKAGE = (
