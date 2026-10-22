@@ -1,0 +1,52 @@
+name: Acceptance contract tests
+
+on:
+  push:
+    branches:
+      - main
+      - acceptance/hadoop-sqoop-resilience
+  pull_request:
+    branches:
+      - main
+      - acceptance/hadoop-sqoop-resilience
+
+jobs:
+  static-and-contract-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Compile changed Python entrypoints
+        run: |
+          python -m py_compile \
+            hadoop/mapreduce/machine_failure_mapper.py \
+            hadoop/mapreduce/machine_failure_reducer.py \
+            scripts/databricks_reconcile_counts.py \
+            spark_streaming/sensor_stream.py \
+            spark_streaming/sensor_stream_part3_test.py \
+            spark_streaming/resilience/prepare_test_environment.py \
+            spark_streaming/resilience/publish_event.py \
+            spark_streaming/resilience/verify_hbase_event.py
+
+      - name: Validate shell syntax
+        run: |
+          bash -n hadoop/mapreduce/run_hadoop_streaming.sh
+          bash -n hadoop/mapreduce/run_local_test.sh
+          bash -n hadoop/sqoop/import_reference_tables.sh
+          bash -n kafka/resilience/run_broker_failure_drill.sh
+          bash -n spark_streaming/resilience/run_checkpoint_recovery_drill.sh
+          bash -n spark_streaming/resilience/run_duplicate_event_drill.sh
+          bash -n spark_streaming/resilience/run_latency_benchmark.sh
+
+      - name: Run local Hadoop contract tests
+        run: python -m unittest discover -s tests -p "test_hadoop_streaming.py" -v
+
+      - name: Run resilience and Databricks contract tests
+        run: python -m unittest discover -s tests -p "test_resilience_assets.py" -v

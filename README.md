@@ -112,3 +112,26 @@ The saved model artifacts were created with different scikit-learn versions:
 Use the matching scikit-learn version when loading each model. Loading a model with a different version may produce compatibility warnings or unexpected behavior. Matching versions are recommended; successful loading alone does not guarantee compatibility.
 
 The repository's `requirements.txt` currently permits scikit-learn versions from 1.5 up to, but not including, 2.0. The dependency range does not enforce the version used to create each saved model.
+
+
+## Hadoop, Sqoop and streaming resilience acceptance
+
+Acceptance work is maintained on the `acceptance/hadoop-sqoop-resilience` branch and tracked in [PR #1](https://github.com/chinthavishnupriya/smart-manufacturing-predictive-maintenance/pull/1).
+
+- `hadoop/mapreduce/` — Hadoop Streaming mapper/reducer and HDFS/YARN job runner. The recorded cluster job summarized 100,000 sensor rows into 100 machine rows.
+- `hadoop/sqoop/` — MySQL source schema and Sqoop imports for `machine_master`, `maintenance_history`, and `work_orders`; the recorded demo imports matched source counts (5, 3, and 2).
+- `kafka/resilience/` — separate three-broker Kafka stack and broker-failure/zero-loss drill; 40 acknowledged message IDs were recovered in the recorded outage test.
+- `spark_streaming/resilience/` — isolated checkpoint replay, duplicate-event, and Kafka-to-HBase latency drills.
+- `scripts/databricks_reconcile_counts.py` — query Bronze/Silver/Gold table counts with the configured Databricks SQL warehouse.
+- `docs/resilience_acceptance.md` and `PART3_STREAMING_VALIDATION.md` — test evidence, limitations, and remaining acceptance gates.
+
+### Current acceptance snapshot (2026-10-22)
+
+- **Passed in recorded runs:** Hadoop MapReduce; three Sqoop demo imports with count reconciliation; the tested Kafka broker outage; duplicate payload suppression in the isolated Spark/HBase test (all 10 rows remained at `event_count=1`); warmed sequential streaming latency under the instructor's 10-second threshold (10 events, p95/max 3.336 seconds).
+- **Passed after the event-ID/window-aggregation change:** Spark checkpoint recovery (batch 1 replayed; 10 HBase rows stayed at `event_count=1`), duplicate-payload suppression, and warmed sequential latency (p95/max 3.336 seconds).
+- **CI passed:** GitHub Actions run `39755265566` compiled the project entrypoints, validated shell syntax, and passed the Hadoop and resilience/Databricks contract suites.
+- **Passed in the configured service environment:** warmed 10-event burst latency (p95/max 3.970 seconds) and Databricks current-snapshot reconciliation (all five row/grain checks passed; JSON report `outputs/databricks-reconciliation-20261022T093138Z.json`).
+- **Scope limitations (not blockers for the defined capstone test scope):** a warmed 10-event burst passed the 10-second target, while sustained/high-volume production traffic remains untested. Run-scoped Databricks lineage needs a shared run-ID column in each table; current-snapshot counts and machine-grain checks passed. The RUL model and high-volume window state are not production-validated.
+- **ML caveat:** machine-held-out RUL evaluation was weak (R² below zero); treat RUL output as experimental, not production-ready.
+
+A test harness is not acceptance evidence by itself. Use the logs and row counts linked in `docs/resilience_acceptance.md`, rerun checks after streaming-code changes, and do not claim universal exactly-once or production-scale guarantees from the local drills.

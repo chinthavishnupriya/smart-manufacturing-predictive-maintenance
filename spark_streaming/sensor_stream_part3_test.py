@@ -1,3 +1,4 @@
+import os
 import time
 # ============================================================
 # Smart Manufacturing IoT
@@ -13,16 +14,16 @@ import happybase
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    avg,
     col,
-    count,
+    collect_set,
     from_json,
-    lit,
+    length,
     max as spark_max,
-    sum as spark_sum,
+    sha2,
+    struct,
+    to_json,
     to_timestamp,
-    var_pop,
-    variance,
+    trim,
     when,
     window,
 )
@@ -52,19 +53,18 @@ RUL_MODEL_PATH = (
 # CONFIGURATION
 # ============================================================
 
-KAFKA_SERVER = "localhost:9092"
-KAFKA_TOPIC = "sensor_raw"
+KAFKA_SERVER = os.getenv("KAFKA_SERVER", "localhost:9092")
+KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "sensor_raw")
 
-HBASE_HOST = "localhost"
-HBASE_PORT = 9090
-HBASE_TABLE = "sensor_anomalies"
+HBASE_HOST = os.getenv("HBASE_HOST", "localhost")
+HBASE_PORT = int(os.getenv("HBASE_PORT", "9090"))
+HBASE_TABLE = os.getenv("HBASE_TABLE", "sensor_anomalies")
 
 # IMPORTANT:
-# This is a NEW checkpoint for the RUL-enabled aggregation.
-CHECKPOINT_LOCATION = (
-    "file:///home/vishnupriya/"
-    "smart-manufacturing-checkpoints/"
-    "sensor_stream_hbase_rul_latency_v4_test"
+# This checkpoint version includes event-ID-deduplicating window aggregate state.
+CHECKPOINT_LOCATION = os.getenv(
+    "SPARK_CHECKPOINT_LOCATION",
+    "file:///home/vishnupriya/smart-manufacturing-checkpoints/sensor_stream_hbase_resilience_event_dedup_v1",
 )
 
 KAFKA_PACKAGE = (
@@ -145,6 +145,7 @@ print()
 
 sensor_schema = StructType([
     StructField("machine_id", StringType(), True),
+    StructField("event_id", StringType(), True),
     StructField("timestamp", StringType(), True),
     StructField("temperature", DoubleType(), True),
     StructField("vibration", DoubleType(), True),
@@ -197,6 +198,29 @@ sensor_df = (
     )
     .filter(
         col("event_time").isNotNull()
+    )
+    .withColumn(
+        "event_id",
+        when(
+            col("event_id").isNotNull() & (length(trim(col("event_id"))) > 0),
+            trim(col("event_id")),
+        ).otherwise(
+            sha2(
+                to_json(
+                    struct(
+                        col("machine_id"),
+                        col("timestamp"),
+                        col("temperature"),
+                        col("vibration"),
+                        col("rpm"),
+                        col("pressure"),
+                        col("operating_hours"),
+                        col("failure"),
+                    )
+                ),
+                256,
+            )
+        )
     )
 )
 
@@ -275,134 +299,29 @@ sensor_with_anomalies = (
 
 aggregated_df = (
     sensor_with_anomalies
-
-    .withWatermark(
-        "event_time",
-        "10 minutes"
-    )
-
+    .withWatermark("event_time", "10 minutes")
     .groupBy(
-        window(
-            col("event_time"),
-            "10 minutes",
-            "1 minute"
-        ),
-        col("machine_id")
+        window(col("event_time"), "10 minutes", "1 minute"),
+        col("machine_id"),
     )
-
     .agg(
-        # Sensor averages
-        avg("temperature").alias(
-            "avg_temperature"
-        ),
-
-        avg("vibration").alias(
-            "avg_vibration"
-        ),
-
-        avg("rpm").alias(
-            "avg_rpm"
-        ),
-
-        avg("pressure").alias(
-            "avg_pressure"
-        ),
-
-        # IMPORTANT:
-        # Required for RUL prediction.
-        avg("operating_hours").alias(
-            "avg_operating_hours"
-        ),
-
-        # Variance
-        var_pop("temperature").alias(
-            "temperature_variance"
-        ),
-
-        var_pop("vibration").alias(
-            "vibration_variance"
-        ),
-
-        # Latest Kafka record timestamp in this machine/window.
-        spark_max("kafka_ingest_time").alias(
-            "latest_kafka_ingest_time"
-        ),
-
-        # Event count
-        count("*").alias(
-            "event_count"
-        ),
-
-        # Individual anomaly counts
-        spark_sum(
-            "temperature_anomaly"
-        ).alias(
-            "temperature_anomaly_count"
-        ),
-
-        spark_sum(
-            "vibration_anomaly"
-        ).alias(
-            "vibration_anomaly_count"
-        ),
-
-        spark_sum(
-            "rpm_anomaly"
-        ).alias(
-            "rpm_anomaly_count"
-        ),
-
-        spark_sum(
-            "pressure_anomaly"
-        ).alias(
-            "pressure_anomaly_count"
-        ),
-
-        # Total anomalous events
-        spark_sum(
-            "has_anomaly"
-        ).alias(
-            "anomalous_event_count"
-        ),
-    )
-)
-
-
-# ============================================================
-# CALCULATE ANOMALY METRICS
-# ============================================================
-
-aggregated_df = (
-    aggregated_df
-
-    .withColumn(
-        "total_anomaly_count",
-        col("temperature_anomaly_count")
-        + col("vibration_anomaly_count")
-        + col("rpm_anomaly_count")
-        + col("pressure_anomaly_count")
-    )
-
-    .withColumn(
-        "anomaly_rate",
-        when(
-            col("event_count") > 0,
-            (
-                col("anomalous_event_count")
-                / col("event_count")
-                * 100
+        # Keep the distinct event payloads inside the window's single streaming
+        # aggregate. This avoids chaining separate stateful deduplication and
+        # aggregation operators in UPDATE output mode. The HBase callback
+        # deduplicates by event_id again before computing every metric.
+        collect_set(
+            struct(
+                col("event_id").alias("event_id"),
+                col("timestamp").alias("event_timestamp"),
+                col("failure").alias("failure"),
+                col("temperature").alias("temperature"),
+                col("vibration").alias("vibration"),
+                col("rpm").alias("rpm"),
+                col("pressure").alias("pressure"),
+                col("operating_hours").alias("operating_hours"),
             )
-        ).otherwise(0.0)
-    )
-
-    .withColumn(
-        "anomaly_status",
-        when(
-            col("anomalous_event_count") > 0,
-            lit("ANOMALY")
-        ).otherwise(
-            lit("NORMAL")
-        )
+        ).alias("event_records"),
+        spark_max("kafka_ingest_time").alias("latest_kafka_ingest_time"),
     )
 )
 
@@ -410,6 +329,91 @@ aggregated_df = (
 # ============================================================
 # HBASE WRITE FUNCTION
 # ============================================================
+# ============================================================
+
+def calculate_window_metrics(window_row):
+    """Calculate metrics from one window's distinct logical sensor events.
+
+    Explicit producer event IDs are preferred. Legacy events receive a stable
+    payload fingerprint upstream in sensor_df. A single stateful window
+    aggregation is used, so this logic avoids a separate streaming
+    dropDuplicates operator followed by another stateful aggregation.
+    """
+    unique_events = {}
+    identity_fields = (
+        "event_timestamp",
+        "failure",
+        "temperature",
+        "vibration",
+        "rpm",
+        "pressure",
+        "operating_hours",
+    )
+    for record in (window_row["event_records"] or []):
+        event = record.asDict(recursive=True)
+        event_id = str(event["event_id"])
+        previous = unique_events.get(event_id)
+        if previous is not None:
+            if any(previous.get(name) != event.get(name) for name in identity_fields):
+                raise ValueError(
+                    f"Conflicting sensor payloads reuse event_id={event_id!r}"
+                )
+            continue
+        unique_events[event_id] = event
+
+    if not unique_events:
+        return None
+
+    frame = pd.DataFrame(list(unique_events.values()))
+
+    def numeric(name):
+        return pd.to_numeric(frame[name], errors="coerce")
+
+    temperature = numeric("temperature")
+    vibration = numeric("vibration")
+    rpm = numeric("rpm")
+    pressure = numeric("pressure")
+    operating_hours = numeric("operating_hours")
+
+    temperature_anomaly = ((temperature < 40) | (temperature > 90)).fillna(False)
+    vibration_anomaly = ((vibration < 0) | (vibration > 5)).fillna(False)
+    rpm_anomaly = ((rpm < 500) | (rpm > 2500)).fillna(False)
+    pressure_anomaly = ((pressure < 2) | (pressure > 8)).fillna(False)
+    anomalous_event = (
+        temperature_anomaly
+        | vibration_anomaly
+        | rpm_anomaly
+        | pressure_anomaly
+    )
+
+    temperature_count = int(temperature_anomaly.sum())
+    vibration_count = int(vibration_anomaly.sum())
+    rpm_count = int(rpm_anomaly.sum())
+    pressure_count = int(pressure_anomaly.sum())
+    event_count = len(unique_events)
+    anomalous_event_count = int(anomalous_event.sum())
+
+    return {
+        "avg_temperature": temperature.mean(),
+        "avg_vibration": vibration.mean(),
+        "avg_rpm": rpm.mean(),
+        "avg_pressure": pressure.mean(),
+        "avg_operating_hours": operating_hours.mean(),
+        "temperature_variance": temperature.var(ddof=0),
+        "vibration_variance": vibration.var(ddof=0),
+        "event_count": event_count,
+        "temperature_anomaly_count": temperature_count,
+        "vibration_anomaly_count": vibration_count,
+        "rpm_anomaly_count": rpm_count,
+        "pressure_anomaly_count": pressure_count,
+        "anomalous_event_count": anomalous_event_count,
+        "total_anomaly_count": (
+            temperature_count + vibration_count + rpm_count + pressure_count
+        ),
+        "anomaly_rate": (anomalous_event_count / event_count) * 100.0,
+        "anomaly_status": "ANOMALY" if anomalous_event_count else "NORMAL",
+    }
+
 
 def write_to_hbase(batch_df, batch_id):
     batch_start_time = time.perf_counter()
@@ -417,25 +421,43 @@ def write_to_hbase(batch_df, batch_id):
     print()
     print("----------------------------------------------")
     print(f"HBase Batch ID: {batch_id}")
+    print(f"RESILIENCE_BATCH_ID={batch_id}", flush=True)
     print("----------------------------------------------")
 
     hbase_connection = None
+    batch_succeeded = False
 
     try:
-        # Collect this microbatch once, avoiding a separate emptiness action.
-        rows = list(batch_df.toLocalIterator())
+        # Each Spark window row contains the unique event payloads currently
+        # known for that window. Compute all metrics from event IDs, not raw
+        # Kafka record count, so duplicate deliveries do not inflate values.
+        rows = batch_df.collect()
         if not rows:
             print("No records in this batch.")
+            batch_succeeded = True
+            return
+
+        metric_rows = [calculate_window_metrics(row) for row in rows]
+        valid_pairs = [
+            (row, metrics)
+            for row, metrics in zip(rows, metric_rows)
+            if metrics is not None
+        ]
+        rows = [pair[0] for pair in valid_pairs]
+        metric_rows = [pair[1] for pair in valid_pairs]
+        if not rows:
+            print("No distinct events in this batch.")
+            batch_succeeded = True
             return
 
         # Prepare all model inputs using the trained feature names.
         rul_inputs = pd.DataFrame([{
-            "temperature": row["avg_temperature"],
-            "vibration": row["avg_vibration"],
-            "rpm": row["avg_rpm"],
-            "pressure": row["avg_pressure"],
-            "operating_hours": row["avg_operating_hours"],
-        } for row in rows])
+            "temperature": metrics["avg_temperature"],
+            "vibration": metrics["avg_vibration"],
+            "rpm": metrics["avg_rpm"],
+            "pressure": metrics["avg_pressure"],
+            "operating_hours": metrics["avg_operating_hours"],
+        } for metrics in metric_rows])
 
         prediction_start = time.perf_counter()
         predicted_values = rul_model.predict(rul_inputs)
@@ -465,7 +487,7 @@ def write_to_hbase(batch_df, batch_id):
 
         # One HBase batch context for this microbatch.
         with table.batch(batch_size=100) as hbase_batch:
-            for row, prediction in zip(rows, predicted_values):
+            for row, metrics, prediction in zip(rows, metric_rows, predicted_values):
                 machine_id = row["machine_id"]
                 window_start = row["window"]["start"]
                 window_end = row["window"]["end"]
@@ -488,21 +510,21 @@ def write_to_hbase(batch_df, batch_id):
 
                 hbase_data = {
                     b"metrics:avg_temperature":
-                        hbase_value(row["avg_temperature"]).encode(),
+                        hbase_value(metrics["avg_temperature"]).encode(),
                     b"metrics:avg_vibration":
-                        hbase_value(row["avg_vibration"]).encode(),
+                        hbase_value(metrics["avg_vibration"]).encode(),
                     b"metrics:avg_rpm":
-                        hbase_value(row["avg_rpm"]).encode(),
+                        hbase_value(metrics["avg_rpm"]).encode(),
                     b"metrics:avg_pressure":
-                        hbase_value(row["avg_pressure"]).encode(),
+                        hbase_value(metrics["avg_pressure"]).encode(),
                     b"metrics:avg_operating_hours":
-                        hbase_value(row["avg_operating_hours"]).encode(),
+                        hbase_value(metrics["avg_operating_hours"]).encode(),
                     b"metrics:temperature_variance":
-                        hbase_value(row["temperature_variance"]).encode(),
+                        hbase_value(metrics["temperature_variance"]).encode(),
                     b"metrics:vibration_variance":
-                        hbase_value(row["vibration_variance"]).encode(),
+                        hbase_value(metrics["vibration_variance"]).encode(),
                     b"metrics:event_count":
-                        hbase_value(row["event_count"]).encode(),
+                        hbase_value(metrics["event_count"]).encode(),
                     b"metrics:latest_kafka_ingest_time":
                         hbase_value(ingest_time).encode(),
                     b"metrics:kafka_to_hbase_start_ms":
@@ -512,21 +534,21 @@ def write_to_hbase(batch_df, batch_id):
                     b"metrics:predicted_rul_minutes":
                         hbase_value(predicted_rul_minutes).encode(),
                     b"anomalies:temperature_count":
-                        hbase_value(row["temperature_anomaly_count"]).encode(),
+                        hbase_value(metrics["temperature_anomaly_count"]).encode(),
                     b"anomalies:vibration_count":
-                        hbase_value(row["vibration_anomaly_count"]).encode(),
+                        hbase_value(metrics["vibration_anomaly_count"]).encode(),
                     b"anomalies:rpm_count":
-                        hbase_value(row["rpm_anomaly_count"]).encode(),
+                        hbase_value(metrics["rpm_anomaly_count"]).encode(),
                     b"anomalies:pressure_count":
-                        hbase_value(row["pressure_anomaly_count"]).encode(),
+                        hbase_value(metrics["pressure_anomaly_count"]).encode(),
                     b"anomalies:anomalous_event_count":
-                        hbase_value(row["anomalous_event_count"]).encode(),
+                        hbase_value(metrics["anomalous_event_count"]).encode(),
                     b"anomalies:total_anomaly_count":
-                        hbase_value(row["total_anomaly_count"]).encode(),
+                        hbase_value(metrics["total_anomaly_count"]).encode(),
                     b"anomalies:anomaly_rate":
-                        hbase_value(row["anomaly_rate"]).encode(),
+                        hbase_value(metrics["anomaly_rate"]).encode(),
                     b"anomalies:status":
-                        hbase_value(row["anomaly_status"]).encode(),
+                        hbase_value(metrics["anomaly_status"]).encode(),
                 }
 
                 hbase_batch.put(row_key.encode(), hbase_data)
@@ -553,6 +575,17 @@ def write_to_hbase(batch_df, batch_id):
             f"Records written: {record_count}"
         )
         print(f"RUL predictions generated: {len(predicted_values)}")
+        batch_succeeded = True
+
+        # Test-only crash window: allow the acceptance runner to kill this
+        # process after HBase writes but before Spark commits the microbatch.
+        pause_seconds = float(os.getenv("RESILIENCE_PAUSE_AFTER_HBASE_SECONDS", "0"))
+        if pause_seconds > 0:
+            print(
+                "RESILIENCE_TEST_PAUSE_AFTER_HBASE_WRITE "
+                f"seconds={pause_seconds}", flush=True
+            )
+            time.sleep(pause_seconds)
 
     except Exception as error:
         print("ERROR writing to HBase:")
@@ -571,6 +604,8 @@ def write_to_hbase(batch_df, batch_id):
             f"TIMING total HBase function: "
             f"{time.perf_counter() - batch_start_time:.3f}s"
         )
+        result_label = "PASS" if batch_succeeded else "FAIL"
+        print(f"RESILIENCE_BATCH_RESULT={batch_id}:{result_label}", flush=True)
 
 
 # ============================================================
@@ -587,10 +622,23 @@ query = (
         CHECKPOINT_LOCATION
     )
     .trigger(
-        processingTime="5 seconds"
+        processingTime=os.getenv("SPARK_TRIGGER_INTERVAL", "5 seconds")
     )
     .start()
 )
+
+# A running query object alone does not mean Kafka has initialized its
+# starting offset. Wait for the first completed microbatch so "latest" has
+# already been resolved before an acceptance runner publishes its test event.
+startup_deadline = time.monotonic() + 120
+while query.lastProgress is None:
+    if time.monotonic() >= startup_deadline:
+        query.stop()
+        spark.stop()
+        raise TimeoutError("Spark query did not complete an initial microbatch within 120 seconds")
+    time.sleep(0.25)
+
+print("STREAMING_QUERY_ACTIVE", flush=True)
 
 
 # ============================================================
