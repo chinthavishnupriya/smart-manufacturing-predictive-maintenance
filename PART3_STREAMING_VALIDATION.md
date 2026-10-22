@@ -103,21 +103,31 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 - Result: **INCONCLUSIVE — no new latency result from this run**. Rerun after pulling the latest branch.
 
 
+
+### Recorded checkpoint recovery after event deduplication — 2026-10-22
+
+- Run ID: `20261022T090407Z-429792`; machine ID: `RESILIENCE-20261022T090407Z-429792`.
+- The test stream wrote 10 HBase sliding-window rows before the crash. All rows had `event_count=1`.
+- Spark was killed after the HBase write and restarted with the same checkpoint. Batch `1` replayed; after restart the row count remained 10 and all rows remained at `event_count=1`.
+- Result: **PASS for this tested crash timing with the event-ID/window-aggregation code**. This is not proof for every failure timing or production-scale load.
+- Log: `outputs/spark-resilience-20261022T090407Z-429792.log`; checkpoint retained at `checkpoints/spark-resilience-20261022T090407Z-429792`.
+
+
 ## Acceptance status
 | Check | Result | Notes |
 |---|---|---|
 | MQTT → Kafka bridge | PASS | MQTT publish succeeded and stream consumed the fresh event. |
 | Spark streaming processing | PASS | Fresh event processed in a new test checkpoint. |
 | HBase persistence | PASS | 10 sliding-window aggregate rows found. |
-| Restart row-count check | PASS (limited) | Row count remained 10 after restart. This alone does not prove end-to-end exactly-once processing. |
+| Restart row-count check | PASS (limited) | Latest run `20261022T090407Z-429792`: batch 1 replayed with the same checkpoint; row count remained 10 and every `event_count` stayed 1. This covers the tested crash timing only. |
 | Alert/processing latency <10 s | PASS for warmed sequential local benchmark under <10 s target; burst-load/production latency unverified | Latest run `20261022T082940Z-408408`; 10/10 events; p50 2.547 s; p95/max 3.336 s, all below 10 s. Earlier burst-style sample p95 was 18.753 s and remains a burst-load risk. |
 | Duplicate logical event handling | PASS for identical-payload test; broader semantics still limited | Run `20261022T071051Z-365425`; Kafka offsets 26/27; Spark batch 1 included both; all 10 HBase rows remained at `event_count=1`. Report `outputs/spark-duplicate-20261022T071051Z-365425.json`. This validates this duplicate payload scenario, not all exactly-once failure modes. |
 
 ## Caveats and next steps
 1. Run a burst-load latency test with fresh events and record p50/p95; the current pass applies only to the warmed sequential local workload.
-2. Re-run checkpoint recovery after the event-ID/`collect_set` change; the warmed sequential latency benchmark has already been rerun and passed under the 10-second target. Keep event identity caveats documented.
+2. Burst-load latency and Databricks run-scoped reconciliation remain open. Keep the event identity caveat documented: legacy fingerprinting can merge legitimate readings with identical payload fields.
 3. The current sensor RUL model is experimental; machine-held-out validation was weak (R² below zero). Do not treat its predictions as production-ready.
 4. The prior checkpoint path is left untouched, and the production stream now defaults to a versioned `sensor_stream_hbase_event_dedup_v1` path to avoid reusing old state after the aggregation schema change. Acceptance drills use fresh run-specific checkpoints. The checkpoint crash/replay drill must be rerun after this code change.
 
 ## Conclusion
-Part 3 demonstrates a functioning live MQTT → Kafka → Spark → HBase path, persistence across a test-stream restart, a passing warmed sequential latency test against the instructor's under-10-second target (latest p95/max 3.336 seconds), and a passing identical-payload deduplication test. It remains **partially complete** until checkpoint recovery is rerun after the event-deduplication change, burst-load latency is validated or explicitly accepted as a limitation, Databricks run-scoped reconciliation is completed, and the experimental RUL model's limitations are accepted.
+Part 3 demonstrates a functioning live MQTT → Kafka → Spark → HBase path, persistence across a test-stream restart, a passing warmed sequential latency test against the instructor's under-10-second target (latest p95/max 3.336 seconds), and a passing identical-payload deduplication test. It remains **partially complete** until burst-load latency is validated or explicitly accepted as a limitation, Databricks run-scoped reconciliation is completed, and the experimental RUL model's limitations are accepted.
