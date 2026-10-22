@@ -73,6 +73,7 @@ class ResilienceAssetContractTests(unittest.TestCase):
     def test_latency_benchmark_waits_for_active_query(self):
         runner = (ROOT / "spark_streaming/resilience/run_latency_benchmark.sh").read_text(encoding="utf-8")
         stream = (ROOT / "spark_streaming/sensor_stream_part3_test.py").read_text(encoding="utf-8")
+        self.assertIn('wait_for_log "Smart Manufacturing Streaming Started" 300', runner)
         self.assertIn('wait_for_log "STREAMING_QUERY_ACTIVE" 180', runner)
         self.assertIn("while query.lastProgress is None:", stream)
         self.assertIn('print("STREAMING_QUERY_ACTIVE", flush=True)', stream)
