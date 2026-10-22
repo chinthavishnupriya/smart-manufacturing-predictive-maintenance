@@ -234,15 +234,15 @@ If the workspace later adds a common pipeline-run ID column to every target tabl
 Run `20261022T090407Z-429792` passed: batch 1 replayed from the same checkpoint, HBase stayed at 10 rows, and every `event_count` remained 1. This proves the tested local crash timing, not every failure mode or production-scale reliability.
 
 
-## Status at implementation time
+## Final acceptance status for defined capstone scope
 
-| Check | Status | Evidence still required |
+| Check | Status | Evidence / scope notes |
 |---|---|---|
 | Hadoop mapper/reducer local contract tests | PASS in clean validation mirror (3 tests) | Re-run in the project checkout after fetching this branch |
 | Hadoop HDFS/YARN MapReduce job | PASS — job `job_1792644122633_0001` completed successfully | Output `/user/vishnupriya/smart-manufacturing/output/machine_failure_rates_20261022_044209`; 100,001 input lines including header, 100,000 mapper records, 100 reducer groups, 100 output rows; note initial `yarn node -list` showed 0 nodes despite successful job |
 | MySQL/Sqoop imports | PASS — all three tables imported through Sqoop/YARN; source and HDFS counts match | Run `2026-10-22 04:51–04:54 UTC`, HDFS base `/user/vishnupriya/smart-manufacturing/sqoop-imports/20261022_045148`; machine_master 5/5, maintenance_history 3/3, work_orders 2/2 |
 | Three-broker Kafka failure/zero-loss drill | PASS — 40/40 expected message IDs recovered exactly once | Run `2026-10-21T22:29:27Z`, topic `resilience-drill-20261021T222927Z-235155`; one broker stopped; 20 messages acknowledged during outage; RF=3, min ISR=2 |
 | Spark checkpoint crash/replay | PASS for the tested crash timing after event-ID/window-state change | Latest run `2026-10-22T09:04:07Z`, machine `RESILIENCE-20261022T090407Z-429792`, batch 1 replayed; 10 rows remained and every `event_count` stayed 1; log `outputs/spark-resilience-20261022T090407Z-429792.log`. Other failure timings/production scale not proven. |
-| Spark streaming latency | PASS — warmed sequential and warmed 10-event burst both meet <10 s target; sustained production load not tested | Sequential run `2026-10-22T08:29:40Z`: p95/max 3,336.116 ms. Burst run `2026-10-22T09:28:18Z`: 10/10 events, p95/max 3,970.166 ms; metrics `outputs/spark-latency-20261022T092818Z-443844.json`. |
-| Duplicate logical event handling | PASS for the tested identical-payload case; broader semantics limited | Run `20261022T071051Z-365425`: offsets 26/27; all 10 HBase windows stayed at `event_count=1`; report `outputs/spark-duplicate-20261022T071051Z-365425.json`. After the deduplication change, checkpoint replay `20261022T090407Z-429792`, sequential latency `20261022T082940Z-408408`, and warmed burst latency `20261022T092818Z-443844` all passed their defined local test cases. |
+| Spark streaming latency | PASS — warmed sequential and warmed 10-event burst meet <10 s target | Sequential run `2026-10-22T08:29:40Z`: p95/max 3,336.116 ms. Burst run `2026-10-22T09:28:18Z`: 10/10 events, p95/max 3,970.166 ms; metrics `outputs/spark-latency-20261022T092818Z-443844.json`. Sustained/high-volume production traffic not tested. |
+| Duplicate logical event handling | PASS for the tested identical-payload case | Run `20261022T071051Z-365425`: offsets 26/27; all 10 HBase windows stayed at `event_count=1`; report `outputs/spark-duplicate-20261022T071051Z-365425.json`. Checkpoint recovery after the change passed in run `20261022T090407Z-429792`. |
 | Databricks current-snapshot count/grain reconciliation | PASS — all five checks passed; run-scoped lineage unavailable without a common run ID column | Report `outputs/databricks-reconciliation-20261022T093138Z.json`: Bronze 100,000 / 100 machines; Silver 100,000 / 100 machines; invalid 0; machine_health 100 / 100 machines; downtime_kpis 100 / 100 machines. Checks passed for Silver <= Bronze, invalid <= Bronze, Gold rows matching Silver's distinct machine count, and equal Gold output counts. |
