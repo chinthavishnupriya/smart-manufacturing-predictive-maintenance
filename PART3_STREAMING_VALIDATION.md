@@ -30,6 +30,17 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 - It publishes five uniquely identified events and writes per-event samples, p50, p95, and maximum latency to `outputs/spark-latency-<run-id>.json`. It uses only `sensor_raw_resilience_test`, `sensor_anomalies_resilience_test`, and a fresh checkpoint. The target is p95 below 5,000 ms; do not mark PASS unless a real run produces that result.
 - The existing 8.76-second observation remains the last completed latency measurement until the benchmark is run.
 
+
+### Recorded latency benchmark — 2026-10-22
+
+- Run ID: `20261022T061620Z-328915`; isolated topic `sensor_raw_resilience_test`; isolated HBase table `sensor_anomalies_resilience_test`.
+- The first post-optimization benchmark published five unique events two seconds apart, using a one-second trigger, but did not wait for each prior event to reach HBase before publishing the next. All five events were eventually observed.
+- Per-event Kafka-ingest-to-HBase completion samples (ms): **18,753.364; 14,184.019; 8,218.649; 4,602.779; 2,261.059**.
+- Reported p50: **8,218.649 ms**; p95 (nearest-rank on five samples): **18,753.364 ms**; max: **18,753.364 ms**.
+- Result: **FAIL — the p95 target below 5,000 ms was not met in this run**. The declining values are consistent with startup/queueing effects, but that explanation is only a hypothesis; it does not erase the failed measurement.
+- The benchmark has since been revised to send three unmeasured warm-up events and then measure ten events sequentially, waiting for each to reach HBase before publishing the next. Run that version to measure steady-state latency. Keep the failed run as historical evidence rather than replacing it.
+
+
 ## Acceptance status
 | Check | Result | Notes |
 |---|---|---|
@@ -37,7 +48,7 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 | Spark streaming processing | PASS | Fresh event processed in a new test checkpoint. |
 | HBase persistence | PASS | 10 sliding-window aggregate rows found. |
 | Restart row-count check | PASS (limited) | Row count remained 10 after restart. This alone does not prove end-to-end exactly-once processing. |
-| Alert/processing latency <5 s | NOT MET | Measured completion latency was approximately 8.76 s; batch exceeded the 5 s trigger. |
+| Alert/processing latency <5 s | NOT MET | Existing measurement ≈8.76 s; 2026-10-22 five-event benchmark p95 18.75 s (startup/queueing may affect it, but target failed). Run the warmed, sequential 10-event benchmark before assessing steady-state latency. |
 | Exactly-once/event deduplication | NOT FULLY VERIFIED | Deterministic HBase row keys support idempotent row upserts, but replayed duplicate input events have not been tested for aggregate double-counting. |
 
 ## Caveats and next steps
