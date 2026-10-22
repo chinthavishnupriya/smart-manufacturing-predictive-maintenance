@@ -37,6 +37,15 @@ The SQL schema and seeded demo rows are in hadoop/sqoop/mysql_source_schema.sql.
 
 Compare source SQL COUNT(*) for machine_master, maintenance_history and work_orders with counts in their HDFS import directories. Save Sqoop logs and HDFS count/sample output. Do not mark Sqoop PASS before all three table imports and reconciliation succeed.
 
+### Recorded MySQL -> Sqoop -> HDFS run
+
+- Imported tables: `machine_master`, `maintenance_history`, `work_orders`.
+- All three Sqoop 1.4.7 MapReduce import jobs completed successfully under YARN.
+- HDFS base: `/user/vishnupriya/smart-manufacturing/sqoop-imports/20261022_045148`.
+- Count reconciliation: `machine_master` MySQL 5 / HDFS 5; `maintenance_history` MySQL 3 / HDFS 3; `work_orders` MySQL 2 / HDFS 2.
+- Used a separate `sqoop_acceptance` account with SELECT grants and an HDFS password file; the pre-existing `sqoop_user` account was not changed.
+- Result: **PASS for the three demo-table imports and row-count reconciliation**.
+
 ## 3. Kafka broker-failure drill
 
 The existing kafka/docker-compose.yml is a one-broker development stack with replication factor 1, so it cannot prove broker fault tolerance. The acceptance harness uses separate containers, ports and volumes and does not modify the existing stack. The isolated stack at kafka/resilience/docker-compose.yml uses three KRaft broker/controller nodes, topic replication factor 3, min.insync.replicas=2 and acks=all. It uses ports 19092-39092 and separate named volumes.
@@ -103,7 +112,7 @@ Only expect counts to match where row grain/filter definitions are the same. Sil
 |---|---|---|
 | Hadoop mapper/reducer local contract tests | PASS in clean validation mirror (3 tests) | Re-run in the project checkout after fetching this branch |
 | Hadoop HDFS/YARN MapReduce job | PASS — job `job_1792644122633_0001` completed successfully | Output `/user/vishnupriya/smart-manufacturing/output/machine_failure_rates_20261022_044209`; 100,001 input lines including header, 100,000 mapper records, 100 reducer groups, 100 output rows; note initial `yarn node -list` showed 0 nodes despite successful job |
-| MySQL/Sqoop imports | Not run | Three import logs plus source/HDFS count reconciliation |
+| MySQL/Sqoop imports | PASS — all three tables imported through Sqoop/YARN; source and HDFS counts match | Run `2026-10-22 04:51–04:54 UTC`, HDFS base `/user/vishnupriya/smart-manufacturing/sqoop-imports/20261022_045148`; machine_master 5/5, maintenance_history 3/3, work_orders 2/2 |
 | Three-broker Kafka failure/zero-loss drill | PASS — 40/40 expected message IDs recovered exactly once | Run `2026-10-21T22:29:27Z`, topic `resilience-drill-20261021T222927Z-235155`; one broker stopped; 20 messages acknowledged during outage; RF=3, min ISR=2 |
 | Spark checkpoint crash/replay | PASS — batch 0 replayed; row count stayed 10 and all `event_count` values stayed 1 | Run `2026-10-22T04:35:26Z`; machine `RESILIENCE-20261022T043526Z-273114`; log `outputs/spark-resilience-20261022T043526Z-273114.log`; isolated Kafka topic/table and checkpoint |
 | Databricks Bronze/Silver/Gold reconciliation | Not verified | Actual workspace run ID/table names/count comparisons |
