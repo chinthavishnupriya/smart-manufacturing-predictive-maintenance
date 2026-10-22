@@ -23,7 +23,8 @@ def main() -> int:
 
     # Preserve an upstream event ID when supplied. For legacy payloads, use a
     # stable fingerprint so replaying the same payload preserves its identity.
-    if not str(event.get("event_id", "")).strip():
+    provided_event_id = event.get("event_id")
+    if provided_event_id is None or not str(provided_event_id).strip():
         canonical_payload = json.dumps(
             {key: value for key, value in event.items() if key != "event_id"},
             sort_keys=True,
