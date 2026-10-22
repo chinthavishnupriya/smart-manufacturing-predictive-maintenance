@@ -14,10 +14,10 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 - After restarting the test stream with its existing test checkpoint, a subsequent HBase scan still returned **10 rows**.
 - Spark log reported `kafka_to_hbase_complete_ms ≈ 8755.678` and a processing batch duration of about `6891 ms` against a `5000 ms` trigger.
 
-## Latest code change and next latency measurement
+## Streaming latency acceptance
 
 - Both `spark_streaming/sensor_stream.py` and the isolated test stream now use `batch_df.collect()` instead of `list(batch_df.toLocalIterator())` before model inference. This avoids sequential partition retrieval before the callback already materializes rows for pandas; it is an optimization candidate, not proof of lower latency.
-- Both streams accept `SPARK_TRIGGER_INTERVAL`. The production stream default is now `1 second` to reduce trigger-wait time for the <5-second latency objective; it can be overridden with `SPARK_TRIGGER_INTERVAL`. The isolated benchmark also defaults to `1 second`. This configuration change does not itself establish that latency acceptance passes.
+- Both streams accept `SPARK_TRIGGER_INTERVAL`. The production stream default is now `1 second` to reduce trigger-wait time for the instructor's under-10-second latency objective; it can be overridden with `SPARK_TRIGGER_INTERVAL`. The isolated benchmark also defaults to `1 second`. This configuration change does not itself establish that latency acceptance passes.
 - Run the isolated benchmark against the separate resilience resources:
 
   ```bash
@@ -60,7 +60,7 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 - Initial failing run: `20261022T064346Z-349036`; identical payloads were acknowledged at Kafka offsets `22` and `23`. All 10 HBase sliding-window rows ended at `event_count=2`, confirming that the previous implementation counted a duplicate logical reading twice.
 - Remediation committed on the acceptance branch: add an optional `event_id` to the sensor schema, prefer the producer-supplied stable ID, and derive a SHA-256 fingerprint of the complete sensor payload for legacy events without an ID. One windowed `collect_set` retains event payloads; the HBase callback deduplicates by ID before recomputing averages, variances, event counts, and anomaly counts.
 - This uses one stateful window aggregation instead of chaining a separate streaming deduplication operator with aggregation in Update mode. The windowed payload set grows with unique events in each active window; validate with representative load before treating it as a high-volume production design.
-- **Re-test required:** pull the latest branch and rerun `spark_streaming/resilience/run_duplicate_event_drill.sh`. It should print `DUPLICATE_EVENT_RESULT=DEDUPLICATED` and show `event_count=1` in all ten rows. Do not mark the fix as accepted until that live run passes.
+- **Verified:** run `20261022T071051Z-365425` printed `DUPLICATE_EVENT_RESULT=DEDUPLICATED`; all ten HBase rows remained at `event_count=1` after identical payloads at Kafka offsets 26 and 27. This validates the tested duplicate-payload scenario, not every exactly-once failure mode.
 - Identity caveat: the payload fingerprint fallback treats two readings with identical machine, timestamp, measurements, and failure value as one event. Live producers should include a stable, unique `event_id` per logical reading to distinguish legitimate identical-valued readings.
 
 
@@ -115,7 +115,7 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 
 ## Caveats and next steps
 1. Run a burst-load latency test with fresh events and record p50/p95; the current pass applies only to the warmed sequential local workload.
-2. Re-run checkpoint recovery and the warmed latency benchmark after the event-ID/`collect_set` change; prior passes predate this aggregation change. Keep event identity caveats documented.
+2. Re-run checkpoint recovery after the event-ID/`collect_set` change; the warmed sequential latency benchmark has already been rerun and passed under the 10-second target. Keep event identity caveats documented.
 3. The current sensor RUL model is experimental; machine-held-out validation was weak (R² below zero). Do not treat its predictions as production-ready.
 4. The original production checkpoint was left untouched; the validation used `spark_streaming/sensor_stream_part3_test.py` and its separate `sensor_stream_hbase_rul_latency_v4_test` checkpoint.
 
