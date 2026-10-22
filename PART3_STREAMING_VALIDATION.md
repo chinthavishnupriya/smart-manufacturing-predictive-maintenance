@@ -1,7 +1,7 @@
 # Part 3 — MQTT/Kafka/Spark/HBase Validation
 
 **Validation date:** 2026-10-21
-**Status:** End-to-end path operational; the latest warmed sequential local latency run passes the instructor's under-10-second target. Burst-load performance remains unverified.
+**Status:** Defined capstone acceptance scenarios pass: checkpoint recovery, identical-payload deduplication, warmed sequential and 10-event burst latency under 10 seconds, and Databricks current-snapshot count/grain checks. High-volume production behavior remains outside the tested scope.
 
 ## Architecture tested
 MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → Spark Structured Streaming → HBase table `sensor_anomalies`.
@@ -27,7 +27,7 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
   bash spark_streaming/resilience/run_latency_benchmark.sh
   ```
 
-- The revised benchmark publishes three unmeasured warm-up events, then measures ten uniquely identified events sequentially, waiting for each to reach HBase before publishing the next. It writes per-event samples, p50, p95, and maximum latency to `outputs/spark-latency-<run-id>.json`. It uses only `sensor_raw_resilience_test`, `sensor_anomalies_resilience_test`, and a fresh checkpoint.
+- The benchmark publishes three unmeasured warm-up events, then measures ten uniquely identified events. Sequential mode waits for each event to reach HBase; `RESILIENCE_LATENCY_MODE=burst` publishes all ten measured events before waiting for results. It writes per-event samples, p50, p95, and maximum latency to `outputs/spark-latency-<run-id>.json` and uses only `sensor_raw_resilience_test`, `sensor_anomalies_resilience_test`, and a fresh checkpoint.
 - The warmed sequential run (`20261022T062539Z-335222`) passed with p95 2.832 seconds. The latest post-dedup run (`20261022T082940Z-408408`) measured p95/max 3.336 seconds across 10 events, also passing the required under-10-second threshold. The earlier burst-style run (`20261022T061620Z-328915`) had p95 18.75 seconds, so burst-load and production-scale latency remain unverified.
 
 
@@ -81,7 +81,7 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 - Trigger: 1 second; 3 warm-up events excluded; 10/10 measured events observed.
 - Per-event latencies (ms): 1,887.190; 2,546.593; 2,775.899; 2,133.358; 2,962.819; 2,473.644; 3,336.116; 2,901.138; 2,410.647; 3,095.206.
 - p50: **2,546.593 ms**; p95: **3,336.116 ms**; maximum: **3,336.116 ms**.
-- Result: **PASS** against the instructor's requirement that latency remain below 10 seconds. This is the warmed, sequential local workload; burst load and production-scale performance remain unverified.
+- Result: **PASS** against the instructor's requirement that latency remain below 10 seconds. This is the warmed, sequential local workload; the subsequent warmed burst result is recorded in the burst section below. Production-scale performance remains unverified.
 - Metrics: `outputs/spark-latency-20261022T082940Z-408408.json`; log: `outputs/spark-latency-20261022T082940Z-408408.log`.
 
 ### Latency benchmark attempt after event-deduplication change — inconclusive
@@ -115,17 +115,15 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 
 ### Burst-load latency validation
 
-The benchmark now has two modes. The warmed sequential test passed the instructor's under-10-second target (run `20261022T082940Z-408408`, p95/max 3.336 seconds). A prior non-warmed burst-style run failed with p95 18.753 seconds. Re-run a warmed burst using the latest code:
+The warmed sequential test passed the instructor's under-10-second target (run `20261022T082940Z-408408`, p95/max 3.336 seconds). The prior non-warmed burst-style run failed with p95 18.753 seconds. The warmed burst run below subsequently passed the same target (p95/max 3.970 seconds); keep both results so the effect of warm-up and workload definition is transparent:
 
-```bash
-RESILIENCE_LATENCY_MODE=burst \
-PYTHON_BIN="$PWD/.venv-spark/bin/python" \
-KAFKA_SERVER=localhost:19092 \
-KAFKA_BOOTSTRAP=localhost:19092 \
-bash spark_streaming/resilience/run_latency_benchmark.sh
+```text
+Warmed burst run: 20261022T092818Z-443844
+10/10 events observed; p50 2.947 s; p95/max 3.970 s
+Result: PASS for the tested 10-event burst
 ```
 
-Mark the burst target passed only if every event is observed and both p95 and maximum remain below 10 seconds. A sequential pass does not substitute for this check.
+For a repeat, use `RESILIENCE_LATENCY_MODE=burst` with `spark_streaming/resilience/run_latency_benchmark.sh`. A warmed 10-event burst passed; sustained/high-volume production load remains unverified.
 
 ## Acceptance status
 | Check | Result | Notes |
@@ -153,4 +151,4 @@ Mark the burst target passed only if every event is observed and both p95 and ma
 4. The prior checkpoint path is left untouched, and the production stream now defaults to a versioned `sensor_stream_hbase_event_dedup_v1` path. The latest checkpoint crash/replay run passed after this aggregation change.
 
 ## Conclusion
-Part 3 demonstrates a functioning live MQTT → Kafka → Spark → HBase path, persistence across a test-stream restart, a passing warmed sequential latency test against the instructor's under-10-second target (latest p95/max 3.336 seconds), and a passing identical-payload deduplication test. For the defined capstone test scope, the recorded local integration and acceptance checks are complete. Production rollout would still require high-volume load testing, a common run ID for run-scoped Databricks reconciliation, and further validation of the experimental RUL model.
+Part 3 demonstrates a functioning live MQTT → Kafka → Spark → HBase path, persistence across a test-stream restart, a passing warmed sequential latency test against the instructor's under-10-second target (latest p95/max 3.336 seconds), and a passing identical-payload deduplication test. For the defined capstone test scope, the recorded local integration checks and acceptance checks are complete. This is not a production-readiness claim: high-volume load testing, run-scoped Databricks lineage, and stronger validation of the experimental RUL model would be required for production rollout.
