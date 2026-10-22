@@ -66,6 +66,9 @@ class ResilienceAssetContractTests(unittest.TestCase):
         self.assertIn("while query.lastProgress is None:", stream)
         self.assertIn("first completed microbatch", stream)
         self.assertIn("DUPLICATE_EVENT_RESULT=DOUBLE_COUNT_CONFIRMED", runner)
+        self.assertIn('[[ "$HBASE_TABLE" != "sensor_anomalies" ]]', runner)
+        self.assertIn('[[ "$KAFKA_TOPIC" != "sensor_raw" ]]', runner)
+        self.assertIn('r.get("event_count") == 2', runner)
 
     def test_latency_benchmark_waits_for_active_query(self):
         runner = (ROOT / "spark_streaming/resilience/run_latency_benchmark.sh").read_text(encoding="utf-8")
@@ -73,9 +76,6 @@ class ResilienceAssetContractTests(unittest.TestCase):
         self.assertIn('wait_for_log "STREAMING_QUERY_ACTIVE" 180', runner)
         self.assertIn("while query.lastProgress is None:", stream)
         self.assertIn('print("STREAMING_QUERY_ACTIVE", flush=True)', stream)
-        self.assertIn('r.get("event_count") == 2', runner)
-        self.assertIn('[[ "$KAFKA_TOPIC" != "sensor_raw" ]]', runner)
-        self.assertIn('[[ "$HBASE_TABLE" != "sensor_anomalies" ]]', runner)
 
 if __name__ == "__main__":
     unittest.main()
