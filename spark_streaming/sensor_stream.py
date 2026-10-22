@@ -14,22 +14,16 @@ import happybase
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    avg,
     col,
     collect_set,
-    count,
     from_json,
     length,
-    lit,
     max as spark_max,
     sha2,
     struct,
-    sum as spark_sum,
     to_json,
     to_timestamp,
     trim,
-    var_pop,
-    variance,
     when,
     window,
 )
@@ -319,6 +313,8 @@ aggregated_df = (
         collect_set(
             struct(
                 col("event_id").alias("event_id"),
+                col("timestamp").alias("event_timestamp"),
+                col("failure").alias("failure"),
                 col("temperature").alias("temperature"),
                 col("vibration").alias("vibration"),
                 col("rpm").alias("rpm"),
@@ -345,12 +341,26 @@ def calculate_window_metrics(window_row):
     dropDuplicates operator followed by another stateful aggregation.
     """
     unique_events = {}
+    identity_fields = (
+        "event_timestamp",
+        "failure",
+        "temperature",
+        "vibration",
+        "rpm",
+        "pressure",
+        "operating_hours",
+    )
     for record in (window_row["event_records"] or []):
         event = record.asDict(recursive=True)
         event_id = str(event["event_id"])
-        # If a producer accidentally reuses an ID with conflicting values,
-        # retain the first value encountered for that ID in this window.
-        unique_events.setdefault(event_id, event)
+        previous = unique_events.get(event_id)
+        if previous is not None:
+            if any(previous.get(name) != event.get(name) for name in identity_fields):
+                raise ValueError(
+                    f"Conflicting sensor payloads reuse event_id={event_id!r}"
+                )
+            continue
+        unique_events[event_id] = event
 
     if not unique_events:
         return None
