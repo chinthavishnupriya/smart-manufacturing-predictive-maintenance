@@ -627,8 +627,17 @@ query = (
     .start()
 )
 
-# The earlier startup banner is printed before query creation and is not a
-# synchronization point. Acceptance runners wait for this post-start marker.
+# A running query object alone does not mean Kafka has initialized its
+# starting offset. Wait for the first completed microbatch so "latest" has
+# already been resolved before an acceptance runner publishes its test event.
+startup_deadline = time.monotonic() + 120
+while query.lastProgress is None:
+    if time.monotonic() >= startup_deadline:
+        query.stop()
+        spark.stop()
+        raise TimeoutError("Spark query did not complete an initial microbatch within 120 seconds")
+    time.sleep(0.25)
+
 print("STREAMING_QUERY_ACTIVE", flush=True)
 
 
