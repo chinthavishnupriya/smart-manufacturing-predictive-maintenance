@@ -17,7 +17,7 @@ Optional overrides: `KAFKA_SERVER`, `KAFKA_BOOTSTRAP`, `HBASE_HOST`, `HBASE_PORT
 
 The runner assigns a unique machine ID and an isolated checkpoint, publishes one event and pauses the test stream after the HBase put but before the foreachBatch callback returns. It kills the Python/JVM process group, restarts against the same checkpoint, verifies the interrupted batch ID is replayed, and checks that each HBase window row still has event_count=1 and that row count does not increase across restart. It does not publish a second logical duplicate record.
 
-The test-stream changes are intentionally isolated from spark_streaming/sensor_stream.py and its production checkpoint. Logs are written to outputs/ and checkpoints are retained under checkpoints/ for inspection.
+The crash-pause behavior is test-only and enabled only with `RESILIENCE_PAUSE_AFTER_HBASE_SECONDS`. The production stream and test stream share event-ID fingerprinting and window-aggregation logic, but the drill uses a unique machine ID, isolated Kafka topic/table names, and a fresh checkpoint. Logs are written to `outputs/` and checkpoints are retained under `checkpoints/` for inspection.
 
 A successful run is evidence for this exact local test path, not a universal exactly-once or production reliability guarantee. Save the full terminal output and log, and do not mark acceptance PASS if a prerequisite is missing or any check fails.
 
