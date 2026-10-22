@@ -422,8 +422,10 @@ def write_to_hbase(batch_df, batch_id):
     hbase_connection = None
 
     try:
-        # Collect this microbatch once, avoiding a separate emptiness action.
-        rows = list(batch_df.toLocalIterator())
+        # This callback materializes all rows again for pandas model inference,
+        # so collect the microbatch with one Spark action instead of fetching
+        # partitions sequentially through toLocalIterator().
+        rows = batch_df.collect()
         if not rows:
             print("No records in this batch.")
             return
