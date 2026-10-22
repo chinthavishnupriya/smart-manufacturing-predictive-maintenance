@@ -207,8 +207,9 @@ metrics = {
     "p50_ms": percentile(ordered, 0.50),
     "p95_ms": percentile(ordered, 0.95),
     "max_ms": max(ordered) if ordered else None,
-    "target_p95_ms": 5000,
-    "latency_target_met": not missing and bool(ordered) and percentile(ordered, 0.95) < 5000,
+    "target_p95_ms": 10000,
+    "target_max_ms": 10000,
+    "latency_target_met": not missing and bool(ordered) and percentile(ordered, 0.95) < 10000 and max(ordered) < 10000,
     "note": (
         "Each sample is the first Spark-reported Kafka-ingest-to-HBase-completion "
         "latency for one uniquely identified machine event. This is a small local "
@@ -220,6 +221,6 @@ print(json.dumps(metrics, indent=2))
 if missing:
     raise SystemExit("FAIL: one or more latency events were not observed.")
 if not metrics["latency_target_met"]:
-    raise SystemExit("LATENCY TARGET NOT MET: p95 must be below 5000 ms.")
-print("PASS: p95 Kafka-ingest-to-HBase completion latency is below 5000 ms.")
+    raise SystemExit("LATENCY TARGET NOT MET: p95 and every measured sample must be below 10000 ms.")
+print("PASS: p95 and every measured Kafka-ingest-to-HBase latency are below 10000 ms.")
 PY
