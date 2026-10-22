@@ -106,6 +106,14 @@ The tracked repository has an Airflow DAG invoking a Databricks job, but the wor
 
 Only expect counts to match where row grain/filter definitions are the same. Silver may reject/quarantine invalid records and Gold may aggregate to machine/day, so also document expected rejects and aggregate reconciliation. Record the real execution IDs, counts, and exceptions before calling it a PASS.
 
+### Recorded Databricks run-history check
+
+- Workspace authentication succeeded with CLI profile `dbc-bdad902e-fcf6`.
+- Job: `Smart Manufacturing ETL Pipeline`, job ID `74232591887481`.
+- The run-history query returned numerous runs with lifecycle `TERMINATED` and result `SUCCESS`.
+- The returned history also includes run `303157520146527`, lifecycle `INTERNAL_ERROR`, result `FAILED`, with message `RESOURCE_EXHAUSTED`: the Free Edition daily resource limit prevented cluster launch and downstream tasks were skipped; run `310546345110678` was canceled.
+- This confirms previous successful job executions but provides no Bronze/Silver/Gold table counts, schemas, grain, or run-filter reconciliation. Do **not** mark data reconciliation PASS based on run states alone. Fresh execution may remain blocked while the daily quota is exhausted.
+
 ## Status at implementation time
 
 | Check | Status | Evidence still required |
@@ -115,4 +123,4 @@ Only expect counts to match where row grain/filter definitions are the same. Sil
 | MySQL/Sqoop imports | PASS — all three tables imported through Sqoop/YARN; source and HDFS counts match | Run `2026-10-22 04:51–04:54 UTC`, HDFS base `/user/vishnupriya/smart-manufacturing/sqoop-imports/20261022_045148`; machine_master 5/5, maintenance_history 3/3, work_orders 2/2 |
 | Three-broker Kafka failure/zero-loss drill | PASS — 40/40 expected message IDs recovered exactly once | Run `2026-10-21T22:29:27Z`, topic `resilience-drill-20261021T222927Z-235155`; one broker stopped; 20 messages acknowledged during outage; RF=3, min ISR=2 |
 | Spark checkpoint crash/replay | PASS — batch 0 replayed; row count stayed 10 and all `event_count` values stayed 1 | Run `2026-10-22T04:35:26Z`; machine `RESILIENCE-20261022T043526Z-273114`; log `outputs/spark-resilience-20261022T043526Z-273114.log`; isolated Kafka topic/table and checkpoint |
-| Databricks Bronze/Silver/Gold reconciliation | Not verified | Actual workspace run ID/table names/count comparisons |
+| Databricks Bronze/Silver/Gold reconciliation | Partially evidenced — many historical job runs show SUCCESS; row reconciliation not verified | Job `Smart Manufacturing ETL Pipeline`, ID `74232591887481`; run history also includes `303157520146527` failing from Free Edition `RESOURCE_EXHAUSTED` and run `310546345110678` canceled; need table names and comparable counts to pass reconciliation |
