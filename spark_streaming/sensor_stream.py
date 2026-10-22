@@ -1,3 +1,4 @@
+import os
 import time
 # ============================================================
 # Smart Manufacturing IoT
@@ -589,7 +590,7 @@ query = (
         CHECKPOINT_LOCATION
     )
     .trigger(
-        processingTime="5 seconds"
+        processingTime=os.getenv("SPARK_TRIGGER_INTERVAL", "5 seconds")
     )
     .start()
 )
