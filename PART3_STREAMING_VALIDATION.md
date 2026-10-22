@@ -1,7 +1,7 @@
 # Part 3 — MQTT/Kafka/Spark/HBase Validation
 
 **Validation date:** 2026-10-21
-**Status:** End-to-end path operational; latency target remains unverified after the latest code optimization.
+**Status:** End-to-end path operational; the latest warmed sequential local latency run passes the instructor's under-10-second target. Burst-load performance remains unverified.
 
 ## Architecture tested
 MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → Spark Structured Streaming → HBase table `sensor_anomalies`.
@@ -28,7 +28,7 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
   ```
 
 - The revised benchmark publishes three unmeasured warm-up events, then measures ten uniquely identified events sequentially, waiting for each to reach HBase before publishing the next. It writes per-event samples, p50, p95, and maximum latency to `outputs/spark-latency-<run-id>.json`. It uses only `sensor_raw_resilience_test`, `sensor_anomalies_resilience_test`, and a fresh checkpoint.
-- The warmed sequential run (`20261022T062539Z-335222`) passed with p95 2.832 seconds. The earlier burst-style run (`20261022T061620Z-328915`) failed with p95 18.75 seconds, so burst-load and production-scale latency remain unverified.
+- The warmed sequential run (`20261022T062539Z-335222`) passed with p95 2.832 seconds. The latest post-dedup run (`20261022T082940Z-408408`) measured p95/max 3.336 seconds across 10 events, also passing the required under-10-second threshold. The earlier burst-style run (`20261022T061620Z-328915`) had p95 18.75 seconds, so burst-load and production-scale latency remain unverified.
 
 
 ### Recorded latency benchmark — 2026-10-22
@@ -50,7 +50,7 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 - All **10/10** measured events were observed. No machine IDs were missing.
 - Per-event Kafka-ingest-to-HBase completion samples (ms): 2,832.237; 2,163.814; 2,628.891; 2,286.865; 2,381.211; 2,255.396; 2,186.979; 2,006.450; 1,809.567; 1,931.678.
 - p50: **2,186.979 ms**; p95 (nearest-rank over 10 samples): **2,832.237 ms**; max: **2,832.237 ms**.
-- Result: **PASS for the warmed, sequential local benchmark**, with p95 below 5,000 ms. This does not guarantee burst-load or production-scale latency; the earlier burst-style five-event run failed and remains recorded above.
+- Result: **PASS for the warmed, sequential local benchmark**, with p95 and all observed samples below 10,000 ms. This does not guarantee burst-load or production-scale latency; the earlier burst-style five-event run failed and remains recorded above.
 - Log: `outputs/spark-latency-20261022T062539Z-335222.log`; JSON metrics: `outputs/spark-latency-20261022T062539Z-335222.json`; isolated checkpoint: `checkpoints/spark-latency-20261022T062539Z-335222`.
 
 
@@ -74,6 +74,15 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 - This does not prove universal exactly-once processing. The legacy payload fingerprint can collapse legitimate same-machine events with identical timestamp and measurements; live producers should supply stable unique event IDs.
 
 
+
+### Recorded latency benchmark after event deduplication — 2026-10-22
+
+- Run ID: `20261022T082940Z-408408`; isolated topic/table; fresh checkpoint.
+- Trigger: 1 second; 3 warm-up events excluded; 10/10 measured events observed.
+- Per-event latencies (ms): 1,887.190; 2,546.593; 2,775.899; 2,133.358; 2,962.819; 2,473.644; 3,336.116; 2,901.138; 2,410.647; 3,095.206.
+- p50: **2,546.593 ms**; p95: **3,336.116 ms**; maximum: **3,336.116 ms**.
+- Result: **PASS** against the instructor's requirement that latency remain below 10 seconds. This is the warmed, sequential local workload; burst load and production-scale performance remain unverified.
+- Metrics: `outputs/spark-latency-20261022T082940Z-408408.json`; log: `outputs/spark-latency-20261022T082940Z-408408.log`.
 
 ### Latency benchmark attempt after event-deduplication change — inconclusive
 
@@ -101,7 +110,7 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 | Spark streaming processing | PASS | Fresh event processed in a new test checkpoint. |
 | HBase persistence | PASS | 10 sliding-window aggregate rows found. |
 | Restart row-count check | PASS (limited) | Row count remained 10 after restart. This alone does not prove end-to-end exactly-once processing. |
-| Alert/processing latency <5 s | PASS for warmed sequential local benchmark; burst-load/production latency unverified | Run `20261022T062539Z-335222`; 10/10 measured events; p50 2.187 s; p95/max 2.832 s. The earlier burst-style run p95 was 18.753 s. |
+| Alert/processing latency <10 s | PASS for warmed sequential local benchmark under <10 s target; burst-load/production latency unverified | Latest run `20261022T082940Z-408408`; 10/10 events; p50 2.547 s; p95/max 3.336 s, all below 10 s. Earlier burst-style sample p95 was 18.753 s and remains a burst-load risk. |
 | Duplicate logical event handling | PASS for identical-payload test; broader semantics still limited | Run `20261022T071051Z-365425`; Kafka offsets 26/27; Spark batch 1 included both; all 10 HBase rows remained at `event_count=1`. Report `outputs/spark-duplicate-20261022T071051Z-365425.json`. This validates this duplicate payload scenario, not all exactly-once failure modes. |
 
 ## Caveats and next steps
