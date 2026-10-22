@@ -21,7 +21,8 @@ command -v setsid >/dev/null 2>&1 || {
   exit 1
 }
 
-EVENT_COUNT="${RESILIENCE_LATENCY_EVENTS:-5}"
+EVENT_COUNT="${RESILIENCE_LATENCY_EVENTS:-10}"
+WARMUP_COUNT="${RESILIENCE_LATENCY_WARMUP_EVENTS:-3}"
 [[ "$EVENT_COUNT" =~ ^[0-9]+$ ]] && (( EVENT_COUNT >= 3 )) || {
   echo "ERROR: RESILIENCE_LATENCY_EVENTS must be an integer >= 3." >&2
   exit 1
@@ -92,23 +93,8 @@ wait_for_log() {
   return 1
 }
 
-trap cleanup EXIT INT TERM
-
-echo "Preparing isolated topic $KAFKA_TOPIC and table $HBASE_TABLE..."
-"$PYTHON_BIN" "$PREPARE" --bootstrap "$KAFKA_BOOTSTRAP" --topic "$KAFKA_TOPIC" \
-  --hbase-host "$HBASE_HOST" --hbase-port "$HBASE_PORT" --hbase-table "$HBASE_TABLE"
-
-echo "Starting stream: trigger=$SPARK_TRIGGER_INTERVAL checkpoint=$CHECKPOINT_URI"
-setsid "$PYTHON_BIN" "$STREAM" > "$LOG_FILE" 2>&1 &
-SPARK_PID=$!
-wait_for_log "Smart Manufacturing Streaming Started" 120
-# Give Structured Streaming time to initialize its Kafka source.
-sleep 8
-
-for (( n=1; n<=EVENT_COUNT; n++ )); do
-  machine_id="LATENCY-$RUN_ID-$n"
-  MACHINE_IDS+=("$machine_id")
-  event_file="$TEMP_DIR/event-$n.json"
+create_event() {
+  local machine_id="$1" event_file="$2"
   "$PYTHON_BIN" - "$machine_id" > "$event_file" <<'PY'
 import json
 import sys
@@ -125,18 +111,52 @@ event = {
 }
 print(json.dumps(event))
 PY
-  echo "Publishing latency event $n/$EVENT_COUNT: $machine_id"
-  "$PYTHON_BIN" "$PUBLISHER" --event-file "$event_file" \
+}
+
+publish_and_wait() {
+  local machine_id="$1" event_file="$2"
+  "$PYTHON_BIN" "$PUBLISHER" --event-file "$event_file" \\
     --bootstrap "$KAFKA_BOOTSTRAP" --topic "$KAFKA_TOPIC"
-  # Space records so each has a fresh Kafka ingestion timestamp.
-  sleep 2
-done
-
-for machine_id in "${MACHINE_IDS[@]}"; do
   wait_for_log "LATENCY machine=$machine_id" 180
+  # Let foreachBatch return and Spark commit before the next input.
+  sleep 2
+}
+
+trap cleanup EXIT INT TERM
+
+echo "Preparing isolated topic $KAFKA_TOPIC and table $HBASE_TABLE..."
+"$PYTHON_BIN" "$PREPARE" --bootstrap "$KAFKA_BOOTSTRAP" --topic "$KAFKA_TOPIC" \
+  --hbase-host "$HBASE_HOST" --hbase-port "$HBASE_PORT" --hbase-table "$HBASE_TABLE"
+
+echo "Starting stream: trigger=$SPARK_TRIGGER_INTERVAL checkpoint=$CHECKPOINT_URI"
+setsid "$PYTHON_BIN" "$STREAM" > "$LOG_FILE" 2>&1 &
+SPARK_PID=$!
+wait_for_log "Smart Manufacturing Streaming Started" 120
+# Give Structured Streaming time to initialize its Kafka source.
+sleep 8
+
+echo "Warming up stream with $WARMUP_COUNT unmeasured events..."
+for (( n=1; n<=WARMUP_COUNT; n++ )); do
+  machine_id="WARMUP-$RUN_ID-$n"
+  event_file="$TEMP_DIR/warmup-$n.json"
+  create_event "$machine_id" "$event_file"
+  echo "Publishing warm-up event $n/$WARMUP_COUNT: $machine_id"
+  publish_and_wait "$machine_id" "$event_file"
 done
 
-"$PYTHON_BIN" - "$LOG_FILE" "$RESULT_FILE" "$SPARK_TRIGGER_INTERVAL" "${MACHINE_IDS[@]}" <<'PY'
+echo "Starting measured workload: $EVENT_COUNT events, one event at a time..."
+for (( n=1; n<=EVENT_COUNT; n++ )); do
+  machine_id="LATENCY-$RUN_ID-$n"
+  MACHINE_IDS+=("$machine_id")
+  event_file="$TEMP_DIR/event-$n.json"
+  create_event "$machine_id" "$event_file"
+  echo "Publishing latency event $n/$EVENT_COUNT: $machine_id"
+  publish_and_wait "$machine_id" "$event_file"
+done
+
+
+
+"$PYTHON_BIN" - "$LOG_FILE" "$RESULT_FILE" "$SPARK_TRIGGER_INTERVAL" "$WARMUP_COUNT" "${MACHINE_IDS[@]}" <<'PY'
 import json
 import math
 import re
@@ -147,7 +167,8 @@ from datetime import datetime, timezone
 log_path = Path(sys.argv[1])
 result_path = Path(sys.argv[2])
 trigger = sys.argv[3]
-expected_ids = sys.argv[4:]
+warmup_count = int(sys.argv[4])
+expected_ids = sys.argv[5:]
 pattern = re.compile(
     r"LATENCY machine=(\S+) kafka_to_hbase_complete_ms=([0-9]+(?:\.[0-9]+)?)"
 )
@@ -172,6 +193,8 @@ metrics = {
     "trigger_interval": trigger,
     "topic_isolated": True,
     "table_isolated": True,
+    "warmup_events_excluded": warmup_count,
+    "measurement_mode": "steady-state sequential events; each next event is published after the previous event is observed in HBase",
     "expected_events": len(expected_ids),
     "observed_events": len(samples),
     "missing_machine_ids": missing,
