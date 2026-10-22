@@ -113,6 +113,20 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 - Log: `outputs/spark-resilience-20261022T090407Z-429792.log`; checkpoint retained at `checkpoints/spark-resilience-20261022T090407Z-429792`.
 
 
+### Burst-load latency validation
+
+The benchmark now has two modes. The measured sequential mode has passed the under-10-second target after deduplication (run `20261022T082940Z-408408`, p95/max 3.336 seconds). A prior non-warmed burst-style run failed with p95 18.753 seconds. Run the warmed burst mode to decide whether the project can claim the target under burst load:
+
+```bash
+RESILIENCE_LATENCY_MODE=burst \
+PYTHON_BIN="$PWD/.venv-spark/bin/python" \
+KAFKA_SERVER=localhost:19092 \
+KAFKA_BOOTSTRAP=localhost:19092 \
+bash spark_streaming/resilience/run_latency_benchmark.sh
+```
+
+Only mark burst-load latency PASS if the new run observes every measured event and both p95 and maximum remain below 10 seconds. A sequential pass does not substitute for this result.
+
 ## Acceptance status
 | Check | Result | Notes |
 |---|---|---|
