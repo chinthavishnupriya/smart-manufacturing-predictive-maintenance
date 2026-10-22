@@ -28,3 +28,16 @@ Run the isolated Kafka-to-HBase latency measurement with the local streaming env
     PYTHON_BIN="$PWD/.venv-spark/bin/python" KAFKA_SERVER=localhost:19092 KAFKA_BOOTSTRAP=localhost:19092 bash spark_streaming/resilience/run_latency_benchmark.sh
 
 The benchmark uses the same dedicated test topic/table names but a fresh checkpoint and unique machine IDs. The benchmark defaults to a one-second trigger. The production stream also now defaults to one second for the latency objective; the test stream defaults to five seconds unless `SPARK_TRIGGER_INTERVAL` is set. It sends 3 unmeasured warm-up events, then measures 10 uniquely identified events sequentially, waiting for each to be observed by the HBase sink before sending the next. Configure these counts with `RESILIENCE_LATENCY_WARMUP_EVENTS` and `RESILIENCE_LATENCY_EVENTS`. Per-event samples and p50/p95/max metrics are saved to `outputs/spark-latency-<run-id>.json`. It fails if any expected sample is missing or p95 is not below 5,000 ms. The sequential workload measures a warmed local path; it is not a production-scale percentile guarantee.
+
+## Duplicate-event acceptance drill
+
+Run this to publish the **same JSON payload twice** to the isolated topic and inspect the aggregate written to the isolated HBase table:
+
+    PYTHON_BIN="$PWD/.venv-spark/bin/python" KAFKA_SERVER=localhost:19092 KAFKA_BOOTSTRAP=localhost:19092 bash spark_streaming/resilience/run_duplicate_event_drill.sh
+
+The runner uses a fresh checkpoint and unique machine ID. It checks the two Kafka acknowledgement offsets, waits for Spark's checkpoint to include both records and for the sink batch to finish, then verifies all ten sliding-window HBase rows.
+
+- `DUPLICATE_EVENT_RESULT=DEDUPLICATED` means all rows stayed at `event_count=1`.
+- `DUPLICATE_EVENT_RESULT=DOUBLE_COUNT_CONFIRMED` means all rows ended at `event_count=2`; the script exits nonzero because application-level duplicate suppression is not provided by the current aggregation.
+
+This is a negative acceptance test, not proof of universal exactly-once processing. The input schema does not require a stable producer-supplied event ID, so any later deduplication policy must choose a logical event identity carefully to avoid suppressing legitimate readings that happen to share the same values and timestamp.
