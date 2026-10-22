@@ -71,6 +71,17 @@ class ResilienceAssetContractTests(unittest.TestCase):
         self.assertIn('[[ "$KAFKA_TOPIC" != "sensor_raw" ]]', runner)
         self.assertIn('r.get("event_count") == 2', runner)
 
+    def test_databricks_reconciliation_checks_machine_grain_and_saves_report(self):
+        script = (ROOT / "scripts/databricks_reconcile_counts.py").read_text(encoding="utf-8")
+        self.assertIn("COUNT(DISTINCT machine_id)", script)
+        self.assertIn("run_filter_for_tables", script)
+        self.assertIn("absent from {table}", script)
+        self.assertIn('"machine_health_matches_silver_machine_grain"', script)
+        self.assertIn('"downtime_kpis_matches_silver_machine_grain"', script)
+        self.assertIn('"reconciliation_passed": passed', script)
+        self.assertIn("databricks-reconciliation-", script)
+        self.assertIn('"current_snapshot"', script)
+
     def test_latency_benchmark_waits_for_active_query(self):
         runner = (ROOT / "spark_streaming/resilience/run_latency_benchmark.sh").read_text(encoding="utf-8")
         stream = (ROOT / "spark_streaming/sensor_stream_part3_test.py").read_text(encoding="utf-8")
