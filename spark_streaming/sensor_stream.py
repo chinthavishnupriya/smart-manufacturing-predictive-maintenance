@@ -71,7 +71,7 @@ HBASE_TABLE = "sensor_anomalies"
 CHECKPOINT_LOCATION = (
     "file:///home/vishnupriya/"
     "smart-manufacturing-checkpoints/"
-    "sensor_stream_hbase_rul_latency_v3"
+    "sensor_stream_hbase_event_dedup_v1"
 )
 
 KAFKA_PACKAGE = (
