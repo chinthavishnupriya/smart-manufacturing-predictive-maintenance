@@ -84,6 +84,16 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 - Fix committed: the latency runner now waits for `STREAMING_QUERY_ACTIVE`, which the test stream emits only after the first microbatch completes, before publishing any warm-up events. Rerun before updating latency acceptance.
 
 
+
+### Latency runner startup attempt — 2026-10-22
+
+- Run ID: `20261022T082358Z-404964`.
+- Python compilation and shell syntax checks passed, but the resilience contract suite failed because three duplicate-drill assertions were accidentally placed in the latency test. That test placement is fixed on the branch.
+- The latency runner timed out waiting for the stream startup banner after 120 seconds while Spark was still initializing; no latency measurements were produced.
+- The startup banner wait has been increased to 300 seconds. The runner still waits for `STREAMING_QUERY_ACTIVE` (emitted after the first microbatch) before publishing warm-up events.
+- Result: **INCONCLUSIVE — no new latency result from this run**. Rerun after pulling the latest branch.
+
+
 ## Acceptance status
 | Check | Result | Notes |
 |---|---|---|
