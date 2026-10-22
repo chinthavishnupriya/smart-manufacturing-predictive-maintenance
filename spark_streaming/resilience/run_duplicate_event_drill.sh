@@ -166,7 +166,9 @@ echo "Starting test stream with fresh checkpoint: $CHECKPOINT_URI"
 setsid "$PYTHON_BIN" "$STREAM" > "$LOG_FILE" 2>&1 &
 SPARK_PID=$!
 wait_for_log "Smart Manufacturing Streaming Started" 120
-sleep 8
+wait_for_log "STREAMING_QUERY_ACTIVE" 120
+# Wait for the started query to establish its Kafka offsets before publishing.
+sleep 5
 
 echo "Publishing two identical copies for machine $MACHINE_ID..."
 "$PYTHON_BIN" "$PUBLISHER" --event-file "$EVENT_FILE" --copies 2 \
