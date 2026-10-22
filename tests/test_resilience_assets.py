@@ -47,6 +47,7 @@ class ResilienceAssetContractTests(unittest.TestCase):
         self.assertIn("sensor_raw_resilience_test", runner)
         self.assertIn("sensor_anomalies_resilience_test", runner)
         self.assertIn("SPARK_CHECKPOINT_LOCATION", runner)
+        self.assertIn('wait_for_log "STREAMING_QUERY_ACTIVE" 180', runner)
 
 
     def test_duplicate_event_drill_is_isolated_and_checks_aggregate_counts(self):
