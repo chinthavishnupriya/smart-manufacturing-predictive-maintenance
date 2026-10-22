@@ -134,8 +134,17 @@ Mark the burst target passed only if every event is observed and both p95 and ma
 | Spark streaming processing | PASS | Fresh event processed in a new test checkpoint. |
 | HBase persistence | PASS | 10 sliding-window aggregate rows found. |
 | Restart row-count check | PASS (limited) | Latest run `20261022T090407Z-429792`: batch 1 replayed with the same checkpoint; row count remained 10 and every `event_count` stayed 1. This covers the tested crash timing only. |
-| Alert/processing latency <10 s | PASS for warmed sequential local benchmark under <10 s target; burst-load/production latency unverified | Latest run `20261022T082940Z-408408`; 10/10 events; p50 2.547 s; p95/max 3.336 s, all below 10 s. Earlier burst-style sample p95 was 18.753 s and remains a burst-load risk. |
+| Alert/processing latency <10 s | PASS for warmed sequential and 10-event burst local benchmarks; high-volume production latency unverified | Sequential run `20261022T082940Z-408408`: p95/max 3.336 s; warmed burst run `20261022T092818Z-443844`: 10/10 events, p95/max 3.970 s. Both below 10 s. An earlier non-warmed burst attempt was slower and is retained as historical evidence. |
 | Duplicate logical event handling | PASS for identical-payload test; broader semantics still limited | Run `20261022T071051Z-365425`; Kafka offsets 26/27; Spark batch 1 included both; all 10 HBase rows remained at `event_count=1`. Report `outputs/spark-duplicate-20261022T071051Z-365425.json`. This validates this duplicate payload scenario, not all exactly-once failure modes. |
+
+### Recorded warmed burst latency benchmark — 2026-10-22
+
+- Run ID: `20261022T092818Z-443844`; isolated Kafka topic/table and fresh checkpoint.
+- Mode: `burst`; one-second trigger; 3 warm-up events excluded; 10 measured events published without waiting between sends.
+- All 10/10 measured event IDs were observed.
+- p50: **2,946.715 ms**; p95 (nearest-rank): **3,970.166 ms**; maximum: **3,970.166 ms**.
+- Result: **PASS** for the tested warmed 10-event burst workload. Both p95 and maximum were below the instructor's 10-second limit.
+- Metrics: `outputs/spark-latency-20261022T092818Z-443844.json`; log: `outputs/spark-latency-20261022T092818Z-443844.log`.
 
 ## Caveats and next steps
 1. Run a burst-load latency test with fresh events and record p50/p95; the current pass applies only to the warmed sequential local workload.
@@ -144,4 +153,4 @@ Mark the burst target passed only if every event is observed and both p95 and ma
 4. The prior checkpoint path is left untouched, and the production stream now defaults to a versioned `sensor_stream_hbase_event_dedup_v1` path. The latest checkpoint crash/replay run passed after this aggregation change.
 
 ## Conclusion
-Part 3 demonstrates a functioning live MQTT → Kafka → Spark → HBase path, persistence across a test-stream restart, a passing warmed sequential latency test against the instructor's under-10-second target (latest p95/max 3.336 seconds), and a passing identical-payload deduplication test. It remains **partially complete** until burst-load latency is validated or explicitly accepted as a limitation, Databricks run-scoped reconciliation is completed, and the experimental RUL model's limitations are accepted.
+Part 3 demonstrates a functioning live MQTT → Kafka → Spark → HBase path, persistence across a test-stream restart, a passing warmed sequential latency test against the instructor's under-10-second target (latest p95/max 3.336 seconds), and a passing identical-payload deduplication test. For the defined capstone test scope, the recorded local integration and acceptance checks are complete. Production rollout would still require high-volume load testing, a common run ID for run-scoped Databricks reconciliation, and further validation of the experimental RUL model.
