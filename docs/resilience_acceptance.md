@@ -141,6 +141,16 @@ Result: **Counts observed; run-scoped pipeline reconciliation remains partially 
 
 
 
+
+### Recorded checkpoint replay after event deduplication change
+
+- Run: `20261022T090407Z-429792`; machine `RESILIENCE-20261022T090407Z-429792`; batch `1`.
+- Before crash and after restart, HBase returned 10 sliding-window rows and every row had `event_count=1`.
+- Spark was killed after HBase write but before the batch callback returned, then restarted with the same checkpoint. The same batch replayed and the HBase row count remained stable.
+- Result: **PASS for this tested crash timing after the event-ID/window-aggregation change**. This is not a universal exactly-once guarantee.
+- Log: `outputs/spark-resilience-20261022T090407Z-429792.log`; checkpoint: `checkpoints/spark-resilience-20261022T090407Z-429792`.
+
+
 ### Recorded duplicate-event failure before remediation
 
 - Run ID: `20261022T064346Z-349036`; isolated topic `sensor_raw_resilience_test`; isolated HBase table `sensor_anomalies_resilience_test`.
@@ -182,7 +192,7 @@ Result: **Counts observed; run-scoped pipeline reconciliation remains partially 
 | Hadoop HDFS/YARN MapReduce job | PASS — job `job_1792644122633_0001` completed successfully | Output `/user/vishnupriya/smart-manufacturing/output/machine_failure_rates_20261022_044209`; 100,001 input lines including header, 100,000 mapper records, 100 reducer groups, 100 output rows; note initial `yarn node -list` showed 0 nodes despite successful job |
 | MySQL/Sqoop imports | PASS — all three tables imported through Sqoop/YARN; source and HDFS counts match | Run `2026-10-22 04:51–04:54 UTC`, HDFS base `/user/vishnupriya/smart-manufacturing/sqoop-imports/20261022_045148`; machine_master 5/5, maintenance_history 3/3, work_orders 2/2 |
 | Three-broker Kafka failure/zero-loss drill | PASS — 40/40 expected message IDs recovered exactly once | Run `2026-10-21T22:29:27Z`, topic `resilience-drill-20261021T222927Z-235155`; one broker stopped; 20 messages acknowledged during outage; RF=3, min ISR=2 |
-| Spark checkpoint crash/replay | PASS for pre-dedup implementation; retest pending after event-ID/window-state change | Prior run `2026-10-22T06:06:38Z`, machine `RESILIENCE-20261022T060638Z-322538`, log `outputs/spark-resilience-20261022T060638Z-322538.log`; rerun `spark_streaming/resilience/run_checkpoint_recovery_drill.sh` from latest branch before treating current stream as accepted. |
+| Spark checkpoint crash/replay | PASS for the tested crash timing after event-ID/window-state change | Latest run `2026-10-22T09:04:07Z`, machine `RESILIENCE-20261022T090407Z-429792`, batch 1 replayed; 10 rows remained and every `event_count` stayed 1; log `outputs/spark-resilience-20261022T090407Z-429792.log`. Other failure timings/production scale not proven. |
 | Spark streaming latency | PASS — latest warmed sequential local run meets <10 s target; burst-load/production latency unverified | Run `2026-10-22T08:29:40Z`; 10/10 events; p50 2,546.593 ms; p95/max 3,336.116 ms; metrics `outputs/spark-latency-20261022T082940Z-408408.json`; earlier burst-style sample p95 18,753.364 ms |
 | Duplicate logical event handling | PASS for identical-payload test; broader semantics limited | Run `20261022T071051Z-365425`: offsets 26/27; all 10 HBase windows stayed at `event_count=1`; report `outputs/spark-duplicate-20261022T071051Z-365425.json`. Re-run checkpoint recovery and latency checks after this streaming change. |
 | Databricks Bronze/Silver/Gold reconciliation | Partially evidenced — table counts queried successfully, but not filtered to a specific ETL run | Job `Smart Manufacturing ETL Pipeline`, ID `74232591887481`; snapshot: Bronze 100,000, Silver 100,000, invalid 0, machine_health 100, downtime_kpis 100; prior history includes Free Edition `RESOURCE_EXHAUSTED` on run `303157520146527` and canceled run `310546345110678`; run-scoped counts/grain reconciliation still required |
