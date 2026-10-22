@@ -112,9 +112,9 @@ echo "Preparing isolated Kafka topic $KAFKA_TOPIC and HBase table $HBASE_TABLE..
 echo "Starting test stream with isolated checkpoint: $CHECKPOINT_URI"
 setsid "$PYTHON_BIN" "$STREAM" > "$LOG_FILE" 2>&1 &
 SPARK_PID=$!
-wait_for_log "Smart Manufacturing Streaming Started" 120
-# Allow the query to establish its Kafka source before publishing.
-sleep 10
+wait_for_log "Smart Manufacturing Streaming Started" 300
+# Wait until Spark completes an initial microbatch and resolves startingOffsets.
+wait_for_log "STREAMING_QUERY_ACTIVE" 180
 
 echo "Publishing first occurrence..."
 "$PYTHON_BIN" "$PUBLISHER" --event-file "$EVENT_FILE" --copies 1
