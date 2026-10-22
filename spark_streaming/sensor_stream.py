@@ -61,7 +61,7 @@ HBASE_PORT = 9090
 HBASE_TABLE = "sensor_anomalies"
 
 # IMPORTANT:
-# This is a NEW checkpoint for the RUL-enabled aggregation.
+# This checkpoint version includes event-ID-deduplicating window aggregate state.
 CHECKPOINT_LOCATION = (
     "file:///home/vishnupriya/"
     "smart-manufacturing-checkpoints/"
