@@ -2,7 +2,7 @@
 # Integration drill for checkpoint recovery and idempotent HBase upserts.
 # Uses the test-only stream with a brand-new checkpoint; production checkpoint is untouched.
 set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PYTHON_BIN="${PYTHON_BIN:-$ROOT/.venv-spark/bin/python}"
 STREAM="$ROOT/spark_streaming/sensor_stream_part3_test.py"
 PUBLISHER="$ROOT/spark_streaming/resilience/publish_event.py"
