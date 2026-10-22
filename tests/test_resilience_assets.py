@@ -44,5 +44,18 @@ class ResilienceAssetContractTests(unittest.TestCase):
         self.assertIn("sensor_anomalies_resilience_test", runner)
         self.assertIn("SPARK_CHECKPOINT_LOCATION", runner)
 
+
+    def test_duplicate_event_drill_is_isolated_and_checks_aggregate_counts(self):
+        runner = (ROOT / "spark_streaming/resilience/run_duplicate_event_drill.sh").read_text(encoding="utf-8")
+        for resource in ("sensor_raw_resilience_test", "sensor_anomalies_resilience_test"):
+            self.assertIn(resource, runner)
+        self.assertIn('--copies 2', runner)
+        self.assertIn("EXPECTED_END_OFFSET", runner)
+        self.assertIn("find_batch_for_offset", runner)
+        self.assertIn("DUPLICATE_EVENT_RESULT=DOUBLE_COUNT_CONFIRMED", runner)
+        self.assertIn("event_count=2", runner)
+        self.assertIn('[[ "$KAFKA_TOPIC" != "sensor_raw" ]]', runner)
+        self.assertIn('[[ "$HBASE_TABLE" != "sensor_anomalies" ]]', runner)
+
 if __name__ == "__main__":
     unittest.main()
