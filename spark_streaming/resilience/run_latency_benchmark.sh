@@ -23,6 +23,11 @@ command -v setsid >/dev/null 2>&1 || {
 
 EVENT_COUNT="${RESILIENCE_LATENCY_EVENTS:-10}"
 WARMUP_COUNT="${RESILIENCE_LATENCY_WARMUP_EVENTS:-3}"
+LATENCY_MODE="${RESILIENCE_LATENCY_MODE:-sequential}"
+[[ "$LATENCY_MODE" == "sequential" || "$LATENCY_MODE" == "burst" ]] || {
+  echo "ERROR: RESILIENCE_LATENCY_MODE must be sequential or burst." >&2
+  exit 1
+}
 [[ "$EVENT_COUNT" =~ ^[0-9]+$ ]] && (( EVENT_COUNT >= 3 )) || {
   echo "ERROR: RESILIENCE_LATENCY_EVENTS must be an integer >= 3." >&2
   exit 1
@@ -114,10 +119,15 @@ print(json.dumps(event))
 PY
 }
 
-publish_and_wait() {
-  local machine_id="$1" event_file="$2"
+publish_event() {
+  local event_file="$1"
   "$PYTHON_BIN" "$PUBLISHER" --event-file "$event_file" \
     --bootstrap "$KAFKA_BOOTSTRAP" --topic "$KAFKA_TOPIC"
+}
+
+publish_and_wait() {
+  local machine_id="$1" event_file="$2"
+  publish_event "$event_file"
   wait_for_log "LATENCY machine=$machine_id" 180
   # Let foreachBatch return and Spark commit before the next input.
   sleep 2
@@ -146,20 +156,37 @@ for (( n=1; n<=WARMUP_COUNT; n++ )); do
   publish_and_wait "$machine_id" "$event_file"
 done
 
-echo "Starting measured workload: $EVENT_COUNT events, one event at a time..."
-for (( n=1; n<=EVENT_COUNT; n++ )); do
-  machine_id="LATENCY-$RUN_ID-$n"
-  MACHINE_IDS+=("$machine_id")
-  event_file="$TEMP_DIR/event-$n.json"
-  create_event "$machine_id" "$event_file"
-  echo "Publishing latency event $n/$EVENT_COUNT: $machine_id"
-  publish_and_wait "$machine_id" "$event_file"
-done
+echo "Starting measured workload: mode=$LATENCY_MODE, events=$EVENT_COUNT..."
+if [[ "$LATENCY_MODE" == "sequential" ]]; then
+  for (( n=1; n<=EVENT_COUNT; n++ )); do
+    machine_id="LATENCY-$RUN_ID-$n"
+    MACHINE_IDS+=("$machine_id")
+    event_file="$TEMP_DIR/event-$n.json"
+    create_event "$machine_id" "$event_file"
+    echo "Publishing latency event $n/$EVENT_COUNT: $machine_id"
+    publish_and_wait "$machine_id" "$event_file"
+  done
+else
+  # Publish the whole workload without waiting for each HBase result, to measure
+  # queueing and batch processing under a short burst of incoming events.
+  for (( n=1; n<=EVENT_COUNT; n++ )); do
+    machine_id="LATENCY-$RUN_ID-$n"
+    MACHINE_IDS+=("$machine_id")
+    event_file="$TEMP_DIR/event-$n.json"
+    create_event "$machine_id" "$event_file"
+    echo "Publishing burst event $n/$EVENT_COUNT: $machine_id"
+    publish_event "$event_file"
+  done
+  for machine_id in "${MACHINE_IDS[@]}"; do
+    wait_for_log "LATENCY machine=$machine_id" 300
+  done
+fi
 
 
 
 "$PYTHON_BIN" - "$LOG_FILE" "$RESULT_FILE" "$SPARK_TRIGGER_INTERVAL" "$WARMUP_COUNT" "${MACHINE_IDS[@]}" <<'PY'
 import json
+import os
 import math
 import re
 import sys
@@ -193,10 +220,11 @@ def percentile(values, p):
 metrics = {
     "measured_at_utc": datetime.now(timezone.utc).isoformat(),
     "trigger_interval": trigger,
+    "measurement_mode": os.getenv("RESILIENCE_LATENCY_MODE", "sequential"),
     "topic_isolated": True,
     "table_isolated": True,
     "warmup_events_excluded": warmup_count,
-    "measurement_mode": "steady-state sequential events; each next event is published after the previous event is observed in HBase",
+    "measurement_mode": os.getenv("RESILIENCE_LATENCY_MODE", "sequential"),
     "expected_events": len(expected_ids),
     "observed_events": len(samples),
     "missing_machine_ids": missing,
