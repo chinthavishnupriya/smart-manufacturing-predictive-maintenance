@@ -64,6 +64,16 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 - Identity caveat: the payload fingerprint fallback treats two readings with identical machine, timestamp, measurements, and failure value as one event. Live producers should include a stable, unique `event_id` per logical reading to distinguish legitimate identical-valued readings.
 
 
+
+### Recorded duplicate-event deduplication pass — 2026-10-22
+
+- Run ID: `20261022T071051Z-365425`; isolated Kafka topic `sensor_raw_resilience_test`; isolated HBase table `sensor_anomalies_resilience_test`; fresh checkpoint `checkpoints/spark-duplicate-20261022T071051Z-365425`.
+- Identical payloads were acknowledged at Kafka offsets `26` and `27`. Spark completed batch `1` after the checkpoint included the second duplicate offset.
+- HBase returned **10/10 expected sliding-window rows**, with every `event_count=1`.
+- Result: **PASS for identical-payload deduplication in this tested local scenario**. Report: `outputs/spark-duplicate-20261022T071051Z-365425.json`; log: `outputs/spark-duplicate-20261022T071051Z-365425.log`.
+- This does not prove universal exactly-once processing. The legacy payload fingerprint can collapse legitimate same-machine events with identical timestamp and measurements; live producers should supply stable unique event IDs.
+
+
 ## Acceptance status
 | Check | Result | Notes |
 |---|---|---|
@@ -72,13 +82,13 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 | HBase persistence | PASS | 10 sliding-window aggregate rows found. |
 | Restart row-count check | PASS (limited) | Row count remained 10 after restart. This alone does not prove end-to-end exactly-once processing. |
 | Alert/processing latency <5 s | PASS for warmed sequential local benchmark; burst-load/production latency unverified | Run `20261022T062539Z-335222`; 10/10 measured events; p50 2.187 s; p95/max 2.832 s. The earlier burst-style run p95 was 18.753 s. |
-| Duplicate logical event handling | FAIL confirmed on previous code; fix committed, live re-test pending | Initial run `20261022T064346Z-349036`, Kafka offsets 22/23, all 10 rows ended at `event_count=2`. New event-ID/`collect_set` remediation is committed but must be re-run with `spark_streaming/resilience/run_duplicate_event_drill.sh`; acceptance requires all rows to stay at 1. |
+| Duplicate logical event handling | PASS for identical-payload test; broader semantics still limited | Run `20261022T071051Z-365425`; Kafka offsets 26/27; Spark batch 1 included both; all 10 HBase rows remained at `event_count=1`. Report `outputs/spark-duplicate-20261022T071051Z-365425.json`. This validates this duplicate payload scenario, not all exactly-once failure modes. |
 
 ## Caveats and next steps
 1. Run a burst-load latency test with fresh events and record p50/p95; the current pass applies only to the warmed sequential local workload.
-2. Re-run `spark_streaming/resilience/run_duplicate_event_drill.sh` after pulling the event-ID/`collect_set` fix; do not claim acceptance until all HBase windows remain at `event_count=1`.
+2. Re-run checkpoint recovery and the warmed latency benchmark after the event-ID/`collect_set` change; prior passes predate this aggregation change. Keep event identity caveats documented.
 3. The current sensor RUL model is experimental; machine-held-out validation was weak (R² below zero). Do not treat its predictions as production-ready.
 4. The original production checkpoint was left untouched; the validation used `spark_streaming/sensor_stream_part3_test.py` and its separate `sensor_stream_hbase_rul_latency_v4_test` checkpoint.
 
 ## Conclusion
-Part 3 demonstrates a functioning live MQTT → Kafka → Spark → HBase path, persistence across a test-stream restart, and a passing <5-second p95 target for the warmed sequential local benchmark. It remains **partially complete**: burst-load latency is unverified, the new duplicate-event fix awaits a live re-test, and the RUL model remains experimental.
+Part 3 demonstrates a functioning live MQTT → Kafka → Spark → HBase path, persistence across a test-stream restart, and a passing <5-second p95 target for the warmed sequential local benchmark. It remains **partially complete**: burst-load latency is unverified, identical-payload deduplication passed in the isolated test, and the RUL model remains experimental.
