@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import hashlib
 from kafka import KafkaProducer
 
 def main() -> int:
@@ -19,6 +20,16 @@ def main() -> int:
     required = {"machine_id", "timestamp", "temperature", "vibration", "rpm", "pressure", "operating_hours", "failure"}
     if not required.issubset(event):
         parser.error(f"event JSON missing fields: {sorted(required - set(event))}")
+
+    # Preserve an upstream event ID when supplied. For legacy payloads, use a
+    # stable fingerprint so replaying the same payload preserves its identity.
+    if not str(event.get("event_id", "")).strip():
+        canonical_payload = json.dumps(
+            {key: value for key, value in event.items() if key != "event_id"},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        event["event_id"] = hashlib.sha256(canonical_payload).hexdigest()
     producer = KafkaProducer(
         bootstrap_servers=args.bootstrap,
         key_serializer=lambda key: key.encode("utf-8"),
