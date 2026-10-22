@@ -627,6 +627,10 @@ query = (
     .start()
 )
 
+# The earlier startup banner is printed before query creation and is not a
+# synchronization point. Acceptance runners wait for this post-start marker.
+print("STREAMING_QUERY_ACTIVE", flush=True)
+
 
 # ============================================================
 # WAIT FOR STREAMING QUERY
