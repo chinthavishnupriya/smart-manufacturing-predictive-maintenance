@@ -75,6 +75,9 @@ class ResilienceAssetContractTests(unittest.TestCase):
         stream = (ROOT / "spark_streaming/sensor_stream_part3_test.py").read_text(encoding="utf-8")
         self.assertIn('wait_for_log "Smart Manufacturing Streaming Started" 300', runner)
         self.assertIn('wait_for_log "STREAMING_QUERY_ACTIVE" 180', runner)
+        self.assertIn('"target_p95_ms": 10000', runner)
+        self.assertIn('"target_max_ms": 10000', runner)
+        self.assertIn("max(ordered) < 10000", runner)
         self.assertIn("while query.lastProgress is None:", stream)
         self.assertIn('print("STREAMING_QUERY_ACTIVE", flush=True)', stream)
 
