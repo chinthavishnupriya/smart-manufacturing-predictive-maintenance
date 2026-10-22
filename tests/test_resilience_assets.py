@@ -53,7 +53,7 @@ class ResilienceAssetContractTests(unittest.TestCase):
         self.assertIn("EXPECTED_END_OFFSET", runner)
         self.assertIn("find_batch_for_offset", runner)
         self.assertIn("DUPLICATE_EVENT_RESULT=DOUBLE_COUNT_CONFIRMED", runner)
-        self.assertIn("event_count=2", runner)
+        self.assertIn('r.get("event_count") == 2', runner)
         self.assertIn('[[ "$KAFKA_TOPIC" != "sensor_raw" ]]', runner)
         self.assertIn('[[ "$HBASE_TABLE" != "sensor_anomalies" ]]', runner)
 
