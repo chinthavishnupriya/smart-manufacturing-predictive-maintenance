@@ -1,7 +1,7 @@
 # Part 3 — MQTT/Kafka/Spark/HBase Validation
 
 **Validation date:** 2026-10-21
-**Status:** End-to-end path operational; latency target remains outstanding.
+**Status:** End-to-end path operational; latency target remains unverified after the latest code optimization.
 
 ## Architecture tested
 MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → Spark Structured Streaming → HBase table `sensor_anomalies`.
@@ -13,6 +13,22 @@ MQTT (HiveMQ) → Python MQTT-to-Kafka bridge → Kafka topic `sensor_raw` → S
 - Sample row values: `event_count=1`, `predicted_rul_hours=0.6452996031746033`, `anomalous_event_count=1`, `status=ANOMALY`.
 - After restarting the test stream with its existing test checkpoint, a subsequent HBase scan still returned **10 rows**.
 - Spark log reported `kafka_to_hbase_complete_ms ≈ 8755.678` and a processing batch duration of about `6891 ms` against a `5000 ms` trigger.
+
+## Latest code change and next latency measurement
+
+- Both `spark_streaming/sensor_stream.py` and the isolated test stream now use `batch_df.collect()` instead of `list(batch_df.toLocalIterator())` before model inference. This avoids sequential partition retrieval before the callback already materializes rows for pandas; it is an optimization candidate, not proof of lower latency.
+- Both streams accept `SPARK_TRIGGER_INTERVAL`; the default remains `5 seconds`. The isolated benchmark defaults to `1 second` without changing the production default.
+- Run the isolated benchmark against the separate resilience resources:
+
+  ```bash
+  PYTHON_BIN="$PWD/.venv-spark/bin/python" \
+  KAFKA_SERVER=localhost:19092 \
+  KAFKA_BOOTSTRAP=localhost:19092 \
+  bash spark_streaming/resilience/run_latency_benchmark.sh
+  ```
+
+- It publishes five uniquely identified events and writes per-event samples, p50, p95, and maximum latency to `outputs/spark-latency-<run-id>.json`. It uses only `sensor_raw_resilience_test`, `sensor_anomalies_resilience_test`, and a fresh checkpoint. The target is p95 below 5,000 ms; do not mark PASS unless a real run produces that result.
+- The existing 8.76-second observation remains the last completed latency measurement until the benchmark is run.
 
 ## Acceptance status
 | Check | Result | Notes |
