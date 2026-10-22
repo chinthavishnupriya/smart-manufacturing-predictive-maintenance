@@ -63,6 +63,8 @@ class ResilienceAssetContractTests(unittest.TestCase):
         self.assertIn("find_batch_for_offset", runner)
         self.assertIn('wait_for_log "STREAMING_QUERY_ACTIVE" 120', runner)
         self.assertIn("print(\"STREAMING_QUERY_ACTIVE\", flush=True)", stream)
+        self.assertIn("while query.lastProgress is None:", stream)
+        self.assertIn("first completed microbatch", stream)
         self.assertIn("DUPLICATE_EVENT_RESULT=DOUBLE_COUNT_CONFIRMED", runner)
         self.assertIn('r.get("event_count") == 2', runner)
         self.assertIn('[[ "$KAFKA_TOPIC" != "sensor_raw" ]]', runner)
